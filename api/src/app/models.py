@@ -126,3 +126,44 @@ class MovingAverageSeries(BaseModel):
     ticker: str
     windows: list[int]
     points: list[MovingAveragePoint]
+
+
+class QueryRequest(BaseModel):
+    question: str = Field(
+        ...,
+        min_length=3,
+        max_length=1000,
+        description="A natural-language question about the market data.",
+        examples=["Which sector had the highest volatility last year?"],
+    )
+
+
+class QueryAttempt(BaseModel):
+    """One candidate SQL string and its fate.
+
+    Surfaced so a user can see what was tried and, when the guard intervened,
+    that it did — the security boundary is a feature, not an implementation
+    detail to hide.
+    """
+
+    sql: str
+    accepted: bool
+    rejection: str | None = None
+    error: str | None = None
+    row_count: int | None = None
+    elapsed_ms: int | None = None
+
+
+class QueryResponse(BaseModel):
+    question: str
+    answer: str
+    sql: str | None = Field(None, description="The SQL that produced the answer.")
+    columns: list[str] = Field(default_factory=list)
+    rows: list[list] = Field(default_factory=list)
+    row_count: int = 0
+    truncated: bool = Field(False, description="True if the row cap was hit.")
+    attempts: list[QueryAttempt] = Field(default_factory=list)
+    model: str
+    model_calls: int
+    elapsed_ms: int
+    usage: dict[str, int] = Field(default_factory=dict)

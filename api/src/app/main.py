@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.db import api_connection, close_pools, open_pools, pool_stats
 from app.models import HealthResponse
-from app.routers import analytics
+from app.routers import analytics, query
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)-7s %(name)s: %(message)s")
 log = logging.getLogger("app")
@@ -53,6 +53,7 @@ app.add_middleware(
 )
 
 app.include_router(analytics.router)
+app.include_router(query.router)
 
 
 # ---------------------------------------------------------------------------
