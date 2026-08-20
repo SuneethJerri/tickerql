@@ -47,6 +47,9 @@ CREATE TABLE IF NOT EXISTS market.price_history (
     -- present, so corporate actions don't show up as phantom price moves.
     adj_close   numeric(20, 8),
     volume      numeric(24, 4),
+    -- Populated for crypto from CoinGecko, which is the only source here that
+    -- provides it. NULL for equities.
+    market_cap  numeric(24, 4),
     source      text        NOT NULL,
     ingested_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (asset_id, date),
