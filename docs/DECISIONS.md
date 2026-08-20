@@ -496,3 +496,139 @@ the warning. Noted so it is a known quantity rather than a surprise later.
 | CORS | Configured origin echoed; hostile origin not |
 | Endpoint agreement | `/volatility` and `/risk-return` return identical volatilities |
 | Test suite | 90 passed (33 privilege + 22 query + 35 API) |
+
+---
+
+## Phase 4 — Text-to-SQL agent + guardrails
+
+Outcome: AST guard, prompt with 8 few-shots, bounded agent loop, `POST /api/query`.
+85 new tests; 175 green overall.
+
+### Decisions
+
+**D-46 · A manual tool loop rather than the SDK's beta `tool_runner`.** Two
+things this buys that the runner does not: a hard ceiling of 3 model calls (a
+self-correcting agent with an unbounded loop is a billing incident waiting to
+happen), and an audit record of every candidate SQL string — accepted or
+rejected — which is the artifact you actually want when asking "what did the
+model try to run". Also avoids a beta dependency on the security-critical path.
+
+**D-47 · The guard is an allowlist, not a denylist.** A denylist of dangerous
+statements is a bet that you enumerated every dangerous thing; an allowlist of
+"one SELECT over these five relations" is a bet that you enumerated what the
+feature needs. The second claim is far smaller and can actually be checked.
+
+**D-48 · The guard walks every node, not just the root.** PostgreSQL permits
+data-modifying CTEs:
+
+    WITH evil AS (DELETE FROM market.price_history RETURNING *) SELECT * FROM evil
+
+which parses with a `Select` at the root. A root-only check — the obvious
+implementation — waves every one of these through. Four such cases are tested,
+and the rejection reason was verified to be the DML node rather than an
+incidental parse failure.
+
+**D-49 · Rejection reasons are written for the model, not for a log file.**
+They name what was wrong *and* what is available ("Relation 'ingest_runs' is not
+readable. Available: assets, price_history, ..."), because they are fed straight
+back as the tool result for the model to self-correct from. A test asserts the
+reason lists the permitted relations.
+
+**D-50 · LIMIT is injected when absent and clamped when oversized.** A
+well-formed `SELECT date FROM price_history` is 13,000 rows; a model asking for
+a million gets the cap rather than the request.
+
+**D-51 · The prompt is hand-written, with a drift test rather than generation.**
+Generating from `information_schema` would guarantee accurate column lists but
+cannot express what actually drives query quality — that returns come from
+adjusted close, that annualisation is 252 vs 365, that `asset_metrics` exists
+for three windows only. `test_prompt.py` parses the prompt and asserts every
+documented relation and column exists, that every granted relation is
+documented, and that nothing undocumented is granted. Accuracy is checked
+without giving up semantics.
+
+**D-52 · The few-shots are themselves validated.** Every example is asserted to
+pass the guard *and* to execute against the real database. An example the guard
+would reject teaches the model to produce rejects; one that errors teaches a
+broken pattern.
+
+**D-53 · The system prompt carries a cache breakpoint and nothing volatile.**
+~2,300 tokens ride on every call, well over Opus 5's 512-token minimum. A test
+asserts the question is not interpolated into the prompt and that no
+timestamp/session/request identifier appears — any of which would invalidate
+the cached prefix on every single request and silently convert a ~0.1x prefix
+into a full-price one.
+
+**D-54 · The agent's transaction asserts read-only and a timeout explicitly,
+rather than inheriting the role defaults.** D-24 established that
+`default_transaction_read_only` and `statement_timeout` are role *defaults* and
+a session can raise them with a plain `SET`. The guard blocks `SET`, but the
+application should not depend on that to hold: each execution opens a
+transaction, issues `SET TRANSACTION READ ONLY` as its first statement, then
+`SET LOCAL statement_timeout`.
+
+**D-55 · Rows sent to the model are capped at 50; the API response carries all
+of them.** The model needs enough to describe shape and quote figures; every
+additional row is re-billed as input tokens on the following turn.
+
+**D-56 · Blocked attempts are surfaced in the API response.** A user should be
+able to see that the guard intervened and why. Hiding it would make the
+answer look unexplained, and the boundary is a feature worth showing.
+
+**D-57 · `SqlAgent` depends on a narrow `MessagesClient` Protocol.** The whole
+surface is `.create(**kwargs)`, so the test double is ~30 lines and the entire
+loop — guard, real database, result rendering — runs without an API key.
+
+**D-58 · A missing API key is 503, not 500.** The service is healthy; one
+capability is unconfigured. The message says so and points out that the
+analytics endpoints work without it.
+
+**D-59 · `InsufficientPrivilege` raised by agent SQL is logged at ERROR.** The
+guard allowing something the grants refuse means the two allowlists have
+drifted. That is a condition worth alerting on, not a routine rejection.
+
+### Mistakes
+
+**M-20 · The test double stored a reference to a mutable request.**
+`ScriptedClient.create` recorded `kwargs` directly, but the agent appends to the
+same `messages` list across turns — so every recorded call pointed at the same
+object, and an assertion about "what was sent on call 2" silently inspected the
+*final* state of the conversation. Two tests failed with a confusing
+`assert False is True` before I spotted the aliasing. *Fix:* deep-copy on
+capture, mirroring a real HTTP client, which serialises at call time. *Lesson:*
+a test double that records arguments must snapshot them, or it is recording the
+present rather than the past.
+
+**M-21 · `vars()` on a `slots=True` dataclass.** The router built its response
+with `QueryAttempt(**vars(a))`; slotted dataclasses have no `__dict__`, so this
+raised `TypeError` on the happy path — a guaranteed 500 the moment a real query
+succeeded. Every test that exercised a *successful* query caught it; the
+error-path tests all passed. *Fix:* `dataclasses.asdict`. *Lesson:* worth noting
+that the failure was invisible to two thirds of the endpoint tests, because they
+exercised paths that never reached the serialisation.
+
+**M-22 · Imported the test helper as `tests.fake_anthropic`.** `api/tests/` has
+no `__init__.py`, and pytest puts the test file's own directory on `sys.path`,
+so the import is `fake_anthropic`. Trivial, fixed immediately.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| Guard: write statements | 12/12 rejected |
+| Guard: stacked statements | 3/3 rejected ("expected exactly one statement") |
+| Guard: data-modifying CTEs | 4/4 rejected, by the DML node (reason verified) |
+| Guard: relations outside allowlist | 9/9 rejected, incl. via subquery, join, union, CTE |
+| Guard: forbidden functions | 7/7 rejected |
+| Guard: `FOR UPDATE` | Rejected as LOCK |
+| Guard: legitimate analytics | 9/9 allowed (CTEs, windows, unions, aggregates, corr) |
+| Guard: LIMIT | Injected when absent, preserved when smaller, clamped when oversized |
+| Agent: hostile SQL | Blocked, never executed; 13,077 rows still present afterwards |
+| Agent: self-correction | Rejection fed back, second attempt succeeded |
+| Agent: loop bound | Stops at 3 model calls |
+| Agent: refusal | `stop_reason='refusal'` raises rather than reading empty content |
+| Prompt: drift | Every documented relation/column exists; grants and docs match exactly |
+| Prompt: few-shots | 8/8 pass the guard and execute successfully |
+| Endpoint: no key | 503 with setup guidance (verified live) |
+| Endpoint: internals | Exception detail not leaked to the client |
+| Test suite | 175 passed (33 privilege, 22 query, 35 API, 54 guard, 13 agent, 8 prompt, 10 endpoint) |
