@@ -152,4 +152,137 @@ be applied and tested before being trusted.
 
 ## Phase 1 — Schema + ingestion
 
-*Not started. Two DDL files written ahead of the stop instruction; see M-07.*
+Outcome: 16 assets, 13,077 real OHLCV rows spanning 3 years, derived layer
+built, 11/11 data sanity gates green, 33/33 privilege tests green.
+
+### Decisions
+
+**D-16 · Moved `db/003_roles.sql` from Phase 4 into Phase 1.** The plan filed
+roles under the agent phase, but `migrate` has to apply the complete migration
+set or the database is in a half-configured state. Creating the roles early also
+means the security boundary is testable from the moment data exists, rather than
+three phases later.
+
+**D-17 · No passwords in any SQL file.** `003_roles.sql` creates roles without
+credentials; `migrate` assigns them afterwards via
+`psycopg.sql.SQL(...).format(sql.Identifier(role), sql.Literal(password))`.
+Keeps the DDL safe to commit while still being a single command to apply.
+
+**D-18 · The resume checkpoint is the data, not a side file.** The plan proposed
+`.ingest_checkpoints/`. Using `SELECT asset_id, max(date) ... GROUP BY asset_id`
+instead means the checkpoint can never disagree with what was actually
+persisted — a crash between "write rows" and "write checkpoint file" is not a
+failure mode that exists.
+
+**D-19 · Added `assets.source_symbol`.** yfinance wants `BTC-USD`; users and the
+LLM should see `BTC`. Encoding that as a column beats a string convention like
+`ticker + "-USD"`, which silently breaks the first time a provider disagrees.
+
+**D-20 · Added `price_history.market_cap`.** Populated for crypto from
+CoinGecko, NULL for equities. *Tension acknowledged:* no endpoint currently
+reads it, so this is mild scope creep. Kept because it is the one datum
+CoinGecko uniquely provides, and without it CoinGecko's presence in the pipeline
+is decorative rather than functional.
+
+**D-21 · CoinGecko points are aggregated to one bar per UTC date, last-observation-wins.**
+Their granularity is range-dependent (see M-11). Volume is a *rolling 24h*
+figure, so last-of-day is correct there too — summing hourly points would have
+inflated it by ~24x.
+
+**D-22 · The privilege test suite was written in Phase 1, not Phase 4.** It is
+the proof of the platform's headline requirement. Once the roles existed, there
+was no reason to leave that claim unverified for three phases.
+
+**D-23 · The privilege tests assert *effects*, not *exceptions*, wherever the
+two can diverge.** See M-12 — a test that asserts "this raises" can pass for
+entirely the wrong reason.
+
+**D-24 · `statement_timeout` is documented as a default, not a guarantee.**
+Verified: the role can raise its own limit to 10 minutes with a plain `SET`. So
+it bounds honest queries only. The real protection against a runaway generated
+query is that the AST guard permits a single `SELECT` and no `SET`, plus an
+app-set per-transaction timeout. A test asserts this explicitly so nobody later
+mistakes the role setting for a hard control.
+
+**D-25 · Commit granularity and the refusal to backdate.** The user asked for
+frequent small pushes "so that it looks like I am committing something daily."
+Small logical commits: yes, adopted — it is better practice regardless. Backdating
+commit timestamps to manufacture activity on days no work happened: declined.
+Contribution graphs are read by third parties as a record of when work occurred.
+Genuine incremental commits make the history active because it *is* active.
+Branch renamed `master` -> `main` to match GitHub's default.
+
+### Mistakes
+
+**M-08 · Repeated M-02 verbatim.** Ran `ls <path>` again and hit the same
+`eza --icons` parse error. A logged mistake that recurs is a process failure,
+not a slip. *Fix, now standing:* use `find` for listing, `test -f` for existence.
+
+**M-09 · Package/directory name collision.** The project directory `ingest/`
+(containing `pyproject.toml` and `src/`) shadows the installed package `ingest`
+as an implicit namespace package when running from the repo root:
+`ingest.__file__` was `None` and `python -m ingest` failed with
+"No module named ingest.__main__". The editable install's path hook wins once
+the package is installed, so the documented workflow works — but a fresh clone
+that runs `python -m ingest` *before* `uv pip install -e ingest/` will hit a
+confusing error. *Accepted with documentation* rather than renaming the
+directory, since renaming risks missed references across CLAUDE.md, the plan,
+and future CI. Revisit if it bites again.
+
+**M-10 · yfinance MultiIndex bug — caught by the probe, not by reasoning.**
+I wrote `frame[symbol] if len(symbols) > 1 else frame`, assuming a single-symbol
+`yf.download` returns flat columns. It does not: with `group_by="ticker"`,
+columns are a MultiIndex regardless of symbol count, so the single-symbol path
+raised `KeyError: ['Close']`. *Root cause:* I validated the multi-symbol path
+during Phase 0 and the single-symbol path with a *different API*
+(`yf.Ticker().history()`), then wrote code assuming they behaved alike.
+*Fix:* branch on `isinstance(frame.columns, pd.MultiIndex)` — the actual shape,
+not a proxy for it.
+
+**M-11 · CoinGecko granularity assumption — the most dangerous bug so far.**
+I assumed `/market_chart/range` returns daily points. It does not: the
+granularity depends on range width (≤2d -> 5-minute, 3–90d -> hourly, 91d+ -> daily).
+The 7-day refresh returned **187 points for 7 days**. Because the primary key is
+`(asset_id, date)`, those would have upserted over each other and stored an
+essentially arbitrary intraday price as the official daily close — silently
+corrupting every downstream return, volatility, and correlation figure with no
+error anywhere. Caught only because the probe printed a bar count that was
+obviously too large. *Fix:* explicit last-observation-per-date aggregation in
+the source. *Lesson:* a row count that looks wrong is worth ten seconds of
+attention; this would not have surfaced as an exception at any layer.
+
+**M-12 · A privilege test that asserted the wrong mechanism.** I asserted that
+`GRANT ALL ON market.assets TO sqlproj_agent` raises `InsufficientPrivilege`. It
+does not — PostgreSQL treats a GRANT from a non-owner without grant option as a
+**no-op with a warning** (`no privileges were granted for "assets"`), returning
+success. The security was never actually broken (INSERT privilege stayed
+`False`, the write stayed blocked), but the test was wrong, and the failure mode
+of that wrongness is bad: someone could have "fixed" the failing test by
+loosening the assertion and never noticed that the interesting property was
+never being checked. *Fix:* assert the effect —
+`has_table_privilege(...) is False` plus the write still failing.
+
+**M-13 · Broke the test file with a careless string replacement.** Inserted a new
+function at the `def test_forbidden_reads_are_rejected(` anchor, which sits
+*below* its `@pytest.mark.parametrize` decorator — so the decorator bound to the
+new function and pytest failed collection with "function uses no argument
+'label'". *Fix:* deleted the stray decorator line. *Lesson:* when inserting
+before a function, anchor on the decorator, not the `def`.
+
+**M-14 · The plan said "15 assets" but lists 16.** 4 Tech + 3 Energy + 3
+Financials + 3 Healthcare + 3 Crypto = 16. An arithmetic slip in my own plan,
+carried from the user's original "~15 assets". The seed file and all docs now
+say 16.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| Migrations 001/002/003/seed | Applied clean, first attempt |
+| Backfill | 16/16 assets, 13,077 rows, ~10s |
+| Coverage | 753 bars/equity, 1096/crypto, 2023-08-21 -> 2026-08-20 |
+| Data sanity gates | 11/11 PASS (no dupes, no non-positive closes, no high<low, no interior NULL returns) |
+| Annualisation split (D-07) | Confirmed: 251 observations/equity vs 365/crypto in the 365-day window |
+| Metric plausibility | Crypto vol 44-69% w/ -53%..-75% drawdowns; equities 18-37%; JNJ lowest at 18.6% |
+| Privilege suite | 33/33 PASS, including writes still blocked after `SET default_transaction_read_only = off` |
+
