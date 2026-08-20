@@ -632,3 +632,133 @@ so the import is `fake_anthropic`. Trivial, fixed immediately.
 | Endpoint: no key | 503 with setup guidance (verified live) |
 | Endpoint: internals | Exception detail not leaked to the client |
 | Test suite | 175 passed (33 privilege, 22 query, 35 API, 54 guard, 13 agent, 8 prompt, 10 endpoint) |
+
+---
+
+## Phase 5 — React frontend
+
+Outcome: four views (Dashboard, Risk vs return, Correlation, Ask) in React +
+TypeScript + Recharts, light and dark themes, verified by screenshot in both.
+
+### Decisions
+
+**D-60 · Ran the palette validator instead of choosing colours by eye.** The
+dataviz skill's rule is that the colour question is computable, so compute it.
+Every palette in `charts/palette.ts` cites the run that justifies it.
+
+**D-61 · The risk/return scatter does NOT colour by sector — proved, not
+assumed.** A scatter is an *all-pairs* form: any two points can land side by
+side, so every pair must clear the separation floors, not just adjacent ones.
+Five sector hues hard-fail (magenta↔orange, normal-vision ΔE 12.9 against a
+floor of 15). Rather than accept that on faith I searched the palette: **0 of 56
+five-hue subsets pass all-pairs in both modes, and only 2 of 70 four-hue subsets
+do** — neither a natural sector palette. So the scatter uses two hues (equities
+vs crypto, which pass with ΔE 33.6) and puts identity in a direct label on all
+16 points. Sector moves to the tooltip and the table. This is a better chart
+than the one originally planned, and the search is why I trust that.
+
+**D-62 · Sector lines keep five hues, because lines are an *adjacent* form.**
+Those pass (worst adjacent ΔE 9.1). The validator's contrast WARN on three
+light-mode slots obliges relief, which is why the chart carries direct
+end-labels and a table view rather than relying on the legend alone.
+
+**D-63 · Sector comparison is indexed to 100 at the window start.** Sector
+levels are not comparable in raw units, and the alternative — a second y-axis —
+is the single worst charting mistake: the alignment of two scales is arbitrary,
+so the chart invents a relationship the data does not contain. Indexing puts
+everything on one honest axis.
+
+**D-64 · Price + moving averages is an EMPHASIS form, not a categorical one.**
+The close is the subject; the averages are derived context. Four peer hues would
+imply four peer series and bury the point. Price takes the accent hue; averages
+take de-emphasis grays at a thinner stroke.
+
+**D-65 · Correlation uses a diverging scale with a neutral gray midpoint.**
+Correlation is polar data with a meaningful zero. A sequential ramp would imply
+-1 and +1 are opposite ends of one magnitude; they are equally strong and
+oppositely signed. Gray at the midpoint makes "uncorrelated" read as nothing
+rather than as a third category.
+
+**D-66 · Correlation axes are ordered by sector, not alphabetically.** A
+correlation matrix earns its keep by showing block structure — the crypto
+cluster at 0.88, the energy cluster at 0.8. Alphabetical order scatters those
+blocks so the reader has to hunt for the thing the chart exists to show.
+
+**D-67 · The heatmap is CSS grid, not Recharts.** A matrix of labelled cells is
+a table that happens to be coloured. The grid gives exact 2px surface gaps, real
+text nodes for screen readers, and no dependency on a charting library's cell
+primitives.
+
+**D-68 · Plain CSS custom properties rather than Tailwind.** The theming
+contract the skill specifies — light values on `:root`, dark declared under both
+a `prefers-color-scheme` media query and a `[data-theme]` scope so the toggle
+wins both ways — is written directly in terms of custom properties. Tailwind
+would add a build step and indirection for no benefit here.
+
+**D-69 · Sector → colour slot is a fixed map.** Colour follows the entity, never
+its rank: filtering or re-sorting must not repaint the survivors, because a
+reader who learned "Energy is orange" is misled when it changes.
+
+**D-70 · Partial moving averages are plotted as gaps, not as values.** Near the
+start of history a 200-day average is computed from fewer than 200 bars.
+Drawing it as if complete would mean the line silently changes meaning at the
+left edge.
+
+### Mistakes
+
+All four of the chart bugs below were invisible to the validator, to
+TypeScript, and to a clean console. Every one was found by rendering the page
+and looking at it — which is exactly why the skill makes that a required step
+rather than a nicety.
+
+**M-23 · Equity sector lines rendered as dashes.** The pivot from long to wide
+format leaves a hole wherever a sector has no bar on a date — and crypto trades
+weekends while equities do not, so **114 of 365 dates carry only crypto**. Every
+equity line was broken into **56 disconnected fragments** (confirmed by counting
+`M` commands in the SVG path: 56 for equities, 1 for crypto). It read as a
+deliberate dashed style rather than as broken data. *Fix:* `connectNulls` — a
+non-trading day is not a missing observation.
+
+**M-24 · The y-axis printed raw floats.** `domain={["dataMin - 4", "dataMax + 4"]}`
+produced ticks like `37.79566314788631`, which the 44px axis width clipped into
+visual mush ("788632"). I had read that as a data bug. *Fix:* `domain={["auto","auto"]}`
+plus an explicit `tickFormatter`.
+
+**M-25 · End-labels collided and then clipped.** Labelling all five sectors
+overprinted Technology and Financials, which finish within a few points of each
+other; after fixing the margin, "Healthcare" was still cut off by the chart
+edge. *Fix:* label only the highest and lowest ending series — sparing labels
+are the whole reason direct labels work — and widen the right margin to fit.
+
+**M-26 · The scatter's point labels never rendered at all.** I wrote a custom
+`label` renderer for `<Scatter>` assuming it receives the series data; it does
+not. The result was a chart with **no labels on any point** — while the entire
+justification for not colouring by sector was that identity would come from
+labels. For one screenshot the design was strictly worse than the option I had
+rejected on principle. *Fix:* `<LabelList dataKey="ticker" />`, the actual API.
+*Lesson:* when a design decision has a load-bearing dependency ("this is fine
+*because* X"), verify X actually happened.
+
+**M-27 · Killed my own shell twice while stopping background servers.** Used
+`pkill -f "vite"` and then `pgrep -f "[u]vicorn app.main"`; the harness wraps
+each command in a shell whose command line contains my pattern literally, so the
+pattern matched my own wrapper process and the command exited 144. The `[u]`
+trick does not help when the pattern is echoed into the wrapper. *Fix:* kill by
+recorded PID.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| Palette validation | Every set run through `validate_palette.js` in both modes |
+| All-pairs search | 0/56 five-hue and 2/70 four-hue subsets pass — scatter design follows from this |
+| Screenshots | 4 views x 2 themes, 1440x1000 at 2x |
+| Console errors | None, either theme |
+| Horizontal overflow | None, either theme |
+| Line integrity | Every series a single unbroken path (was 56 fragments) |
+| Axis ticks | Sector chart integers; scatter rounded to multiples of 10 |
+| Scatter labels | 16/16 points labelled, none clipped |
+| Correlation order | Tech → Energy → Financials → Healthcare → Crypto |
+| Unconfigured Ask | Renders the 503 guidance, not a raw error |
+| Typecheck / build | Clean; 666 kB bundle (191 kB gzip), Recharts-dominated |
+| Backend suite | 175 passed, unchanged |
