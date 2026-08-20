@@ -394,3 +394,105 @@ phases that a green test was verifying less than it appeared to (see M-12).
 | SQL injection | Hostile ticker returns 0 rows; tables intact |
 | Restricted role | All 8 queries run under `sqlproj_api` |
 | Test suite | 55 passed (33 privilege + 22 query) |
+
+---
+
+## Phase 3 — FastAPI backend
+
+Outcome: 10 endpoints over two credential-separated connection pools, 35 API
+tests, 90 tests green overall, verified against a live uvicorn server.
+
+### Decisions
+
+**D-36 · Handlers are `def`, not `async def`.** FastAPI runs synchronous
+handlers in its threadpool, which lets the endpoints use synchronous psycopg
+without blocking the event loop. The alternative — `AsyncConnectionPool` and
+async handlers — would mean maintaining an async path over queries that are
+already tested synchronously, for no gain on this workload (short, indexed
+reads against materialized views). Chosen for one code path over theoretical
+concurrency headroom.
+
+**D-37 · Two pools, two credentials, never interchangeable.** `sqlproj_api`
+serves the analytics endpoints; `sqlproj_agent` is reserved for model-generated
+SQL in Phase 4. The agent pool is capped at 4 against the role's
+`CONNECTION LIMIT 5`, so the pool can never exhaust the role's budget and lock
+itself out. `agent_connection()` carries a docstring warning against using it
+for application queries — blurring that line would make the agent's reach
+unauditable.
+
+**D-38 · No SQL in the router.** Every endpoint is a thin wrapper over a named
+query. The queries are tested independently in Phase 2, so an endpoint change
+cannot quietly alter the maths, and reviewing "what SQL does this service run"
+means reading one directory.
+
+**D-39 · Unknown ticker returns 404, not an empty series.** An empty list reads
+to a client as "this asset has no data"; a missing asset is a different
+condition and should say so. The 404 body lists the known tickers, which makes
+the frontend's error state useful instead of a dead end.
+
+**D-40 · `/analytics/volatility` and `/risk-return` reject windows other than
+30/90/365.** `asset_metrics` is materialized for exactly those, so any other
+value would return an empty list — indistinguishable from "no data" — rather
+than an error. The 400 names the supported values.
+
+**D-41 · Health reports staleness, not just connectivity.** A reachable database
+holding three-week-old prices is a broken analytics platform, and a plain 200
+would hide that. `/api/health` returns `latest_bar` and `stale_days` and
+degrades past a 7-day threshold (chosen to tolerate weekends and holidays).
+
+**D-42 · Database exceptions are mapped centrally and never echoed.** The text
+of a failed statement can disclose schema, and for the Phase 4 agent endpoint it
+would reflect model-generated SQL straight back to the caller. Handlers log the
+detail and return a shape: timeout -> 504, `InsufficientPrivilege` -> **403**,
+other `psycopg.Error` -> 503. The 403 is deliberate: generated SQL reaching
+past the allowlist is the security boundary working, not a server fault, and
+classifying it as 500 would bury a signal worth alerting on.
+
+**D-43 · Response models declare `float`, so `Decimal` is coerced on the way
+out.** JSON has no decimal type and every consumer of these fields is a chart.
+Exact values stay in Postgres; only the wire form is lossy, at a precision far
+below anything a price chart can render. Documented in `models.py` rather than
+left as an accident.
+
+**D-44 · CORS lists explicit origins rather than `*`.** A deployed API should
+not be drivable from an arbitrary page. Verified by a test that asserts a
+hostile origin is not echoed back.
+
+**D-45 · `/api/query` is deliberately absent.** The plan lists it under Phase 3's
+endpoint block, but its implementation is Phase 4. Shipping a stub now would
+mean a route that 501s and a second pass to replace it; the phase boundary is
+cleaner with the route arriving alongside the agent that backs it.
+
+### Mistakes
+
+**M-18 · Debugged working code because I inspected a private internal.** After
+wiring the router I printed `len(app.routes)`, saw 6 where I expected 11, and
+started investigating a registration bug that did not exist. FastAPI 0.141
+defers router flattening: included routers sit in `app.routes` as a single
+`_IncludedRouter` entry and are expanded later. The routes were registered
+correctly the whole time — confirmed instantly by requesting `/openapi.json`,
+which listed all 10 paths. *Cost:* two wasted debugging calls. *Lesson:* check
+the public surface (OpenAPI, an actual request) before reading framework
+internals; internals change between versions and my mental model of them is
+exactly the thing most likely to be stale.
+
+**M-19 · Minor: a `StarletteDeprecationWarning` on every test run.** Starlette's
+`TestClient` now wants `httpx2` rather than `httpx`. Harmless today and left
+alone deliberately — `httpx` is a transitive dependency of the `anthropic` SDK,
+and pulling in a second HTTP client to silence a warning is a worse trade than
+the warning. Noted so it is a known quantity rather than a surprise later.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| OpenAPI schema | All 10 paths documented |
+| Live uvicorn server | 8/8 endpoints 200, payloads 220 B - 31 KB |
+| Health | `ok`, 16 assets, 13,077 rows, 1 day stale |
+| Unknown ticker | 404 listing the valid tickers |
+| Unsupported metric window | 400 naming 30/90/365 |
+| Bad granularity | 422 from Pydantic literal validation |
+| Hostile ticker in path | Rejected; tables intact |
+| CORS | Configured origin echoed; hostile origin not |
+| Endpoint agreement | `/volatility` and `/risk-return` return identical volatilities |
+| Test suite | 90 passed (33 privilege + 22 query + 35 API) |
