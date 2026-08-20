@@ -1,0 +1,22 @@
+# Local development database. Mirrors the target Neon deployment closely enough
+# that the same DDL runs unchanged against both: same major version, and all
+# migrations execute as a non-superuser-equivalent owner role.
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: sqlproj-db
+    environment:
+      POSTGRES_USER: sqlproj_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
+      POSTGRES_DB: sqlproj
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sqlproj_owner -d sqlproj"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+volumes:
+  pgdata:
