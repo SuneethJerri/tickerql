@@ -70,7 +70,7 @@ it needs accounts and credentials that live with you, not in the repository.
    runnable by a non-superuser owner — Neon gives you no superuser, and the DDL
    was written for that constraint.
 
-5. Load the history and build the derived layer (~1 minute for 105 assets):
+5. Load the history and build the derived layer (~1 minute for 135 assets):
 
    ```bash
    .venv/bin/python -m ingest backfill --years 3
@@ -120,7 +120,7 @@ it needs accounts and credentials that live with you, not in the repository.
    |---|---|
    | `ANTHROPIC_BASE_URL` | `https://openrouter.ai/api` — **not** `.../api/v1` |
    | `ANTHROPIC_AUTH_STYLE` | `bearer` |
-   | `ANTHROPIC_MODEL` | `anthropic/claude-opus-5` |
+   | `ANTHROPIC_MODEL` | `meta-llama/llama-3.3-70b-instruct` — the committed default in [`render.yaml`](../render.yaml); `anthropic/claude-opus-5` also works and answers better |
    | `AGENT_EFFORT` | blank |
 
    The SDK appends `/v1/messages` to the base URL, so a trailing `/v1`
@@ -136,8 +136,13 @@ it needs accounts and credentials that live with you, not in the repository.
    if you want previews too:
 
    ```
-   https://<project>.vercel.app,http://localhost:5173
+   https://tickerql.vercel.app,https://text-to-sql-analytics-sql8.vercel.app,http://localhost:5173
    ```
+
+   Both Vercel origins during the rename: the old hostname keeps resolving and
+   keeps serving, so dropping it the moment the new domain exists 400s every
+   request from it on the preflight. No trailing slashes, no spaces after the
+   commas, scheme included — each is matched as an exact string.
 
    The API refuses `*` by design — a deployed API should not be drivable from
    an arbitrary page.
@@ -207,6 +212,56 @@ runs at 23:00 UTC and on demand.
 
 ---
 
+## 5. The `tickerql` rename — console steps
+
+The repository is renamed; the deployments are not. Everything below needs a
+console and cannot be done from here.
+
+**Nothing is broken while these are pending.** The old Vercel hostname keeps
+resolving and keeps working. Do them in this order — step 2 depends on step 1.
+
+1. **Vercel → Settings → Domains → Add** `tickerql.vercel.app`, then set it as
+   the **production** domain. The old
+   `text-to-sql-analytics-sql8.vercel.app` keeps resolving; Vercel does not
+   retire it.
+
+2. **Render → Environment → `CORS_ORIGINS`**, set to both origins:
+
+   ```
+   https://tickerql.vercel.app,https://text-to-sql-analytics-sql8.vercel.app
+   ```
+
+   Do this **after** the domain exists and **before** you rely on it. The new
+   origin is matched as an exact string, so until it is listed every request
+   from it fails the preflight with a 400 — which in the browser console reads
+   as a CORS error rather than a missing setting. Drop the old origin once
+   nothing links to it.
+
+3. **Redeploy both services.** This one is easy to skip and it is why the
+   streaming Ask page will otherwise appear broken in production:
+
+   - **Render** must redeploy to serve `POST /api/query/stream` at all. Until
+     it does, the frontend's stream request 404s.
+   - **Vercel** must rebuild because the Ask page calling that route only
+     exists in the new bundle — and because `VITE_API_BASE` is inlined at
+     build time, so a stale build keeps whatever value it was compiled with.
+
+   Redeploying only one leaves a working dashboard and a dead Ask page.
+
+4. **Vercel → Settings → Deployment Protection**: confirm it is off. With it
+   on, every request — including the ones the dashboard makes — is 302'd to a
+   Vercel SSO page, and the site looks broken to anyone who is not you.
+
+The Render **service name** stays `sqlproj-api`, so the API hostname does not
+move and `VITE_API_BASE` does not change. Renaming the service would relocate
+it to `tickerql-api.onrender.com` and break every deployed frontend build until
+`VITE_API_BASE` was updated *and* the frontend rebuilt. Nobody but the JS bundle
+ever sees that hostname, so the rename buys nothing and costs an outage window.
+The reasoning is repeated in [`render.yaml`](../render.yaml) next to the name,
+so it does not read as an oversight.
+
+---
+
 ## Verifying the whole chain
 
 ```bash
@@ -214,16 +269,24 @@ API=https://<service>.onrender.com
 
 curl -s $API/api/health | jq '{status, asset_count, price_rows, latest_bar, stale_days}'
 curl -s "$API/api/analytics/sector-performance?window=365" | jq '.[0]'
-curl -s "$API/api/analytics/correlation?window=365" | jq '.cells | length'   # 256 for 105 assets
+curl -s "$API/api/analytics/correlation?window=365" | jq '.cells | length'   # 18225 for 135 assets
 
 curl -s -X POST $API/api/query \
   -H 'Content-Type: application/json' \
   -d '{"question":"Which sector had the highest volatility over the last year?"}' | jq '{answer, sql}'
+
+# The streaming route the Ask page uses. -N is required: without it curl
+# buffers and you see one burst at the end rather than progress.
+curl -N -X POST $API/api/query/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Which sector had the highest volatility over the last year?"}'
 ```
 
-The last call returns `503` with setup instructions until `ANTHROPIC_API_KEY`
+Both query calls return `503` with setup instructions until `ANTHROPIC_API_KEY`
 is set. Every response from `/api/query` includes the SQL that produced it, so
-any answer can be audited against the query behind it.
+any answer can be audited against the query behind it. The stream emits one
+JSON object per `data:` line, ending in a `done` event carrying the identical
+payload.
 
 ---
 

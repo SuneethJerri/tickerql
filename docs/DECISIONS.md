@@ -1605,3 +1605,74 @@ The only inline `style` props left are data-driven: a series colour, a computed
 heat-cell background, a grid template sized by the number of columns, and the
 skeleton's height prop. Those belong in the markup - they are values the
 stylesheet cannot know.
+
+
+## Phase 6 — the `tickerql` rename
+
+The GitHub repository was renamed earlier and the frontend brand and `<title>`
+followed in Phase 2. This is the rest: the documentation, the config, and the
+API's own name for itself.
+
+### Decisions
+
+**D-120 · The Render service keeps the name `sqlproj-api`.** Render derives the
+public hostname from the service name, so renaming it relocates the API to
+`tickerql-api.onrender.com`. Every deployed frontend build would then call a
+dead host until `VITE_API_BASE` was changed on Vercel *and* the frontend
+rebuilt — Vite inlines that value at build time, so updating the variable alone
+does nothing. Nobody but the JS bundle ever sees that hostname. The rename buys
+no user-visible benefit and costs a window in which the live site is broken.
+The reasoning is written into `render.yaml` beside the name so the inconsistency
+reads as a decision rather than as something missed.
+
+**D-121 · The schema stays `market` and the roles stay `sqlproj_*`.** Renaming
+either means a migration plus new credentials in Render, the GitHub Actions
+secret, and every local `.env` — for a string nobody outside the repository
+reads. The old project name survives below the application layer on purpose, and
+`README.md` and `CLAUDE.md` now say so, because an unexplained `sqlproj_agent`
+in a project called tickerql looks like drift.
+
+**D-122 · `CORS_ORIGINS` carries both Vercel origins during the transition.**
+The old `text-to-sql-analytics-sql8.vercel.app` hostname keeps resolving and
+keeps serving after the new domain is added — Vercel does not retire it. Listing
+only the new origin makes every request from the old one fail its preflight,
+which surfaces in the browser console as a CORS error rather than as the missing
+setting it is. Origins are matched as exact strings, so the value is documented
+with no trailing slashes, no spaces after the commas, and schemes included.
+
+**D-123 · `docs/DEPLOY.md` gained a section for the console steps only the user
+can take.** Adding the Vercel domain, setting `CORS_ORIGINS`, confirming
+Deployment Protection is off — and, the one that is easy to skip, that **both**
+Render and Vercel must redeploy before the streaming Ask page works. Render must
+redeploy to serve `POST /api/query/stream` at all; Vercel must rebuild because
+the page that calls it only exists in the new bundle. Redeploying one leaves a
+working dashboard and a dead Ask page, which looks like a bug in the feature
+rather than a half-finished deploy.
+
+**D-124 · `api/pyproject.toml` keeps `name = "sqlproj-api"`.** It is a private
+distribution name that is never published; renaming it rewrites seven generated
+provenance comments in `api/requirements.txt` and changes nothing observable.
+`web/package.json` *was* renamed to `tickerql-web` because it is equally private
+but sits in a file people open, and its two matching fields in
+`package-lock.json` were updated with it so the next `npm install` does not
+rewrite the lockfile on its own.
+
+### Mistakes
+
+**M-59 · The README had been carrying six stale figures since the expansion.**
+`105 rows` for a 135-row table, `175 tests` in two places against an actual 246,
+`256 cells for 135 assets` for a matrix that returns 18,225, and a test table
+listing seven files when there are ten. Each was correct when written and none
+of them is checked by anything — the insights block between the `INSIGHTS`
+markers regenerates itself, and precisely the numbers *outside* it went stale.
+The figures are now verified against the database and a `--collect-only` run
+rather than carried forward. `docs/DEPLOY.md` had the same `256 for 105 assets`
+line and a `~1 minute for 105 assets` note.
+
+**M-60 · `docs/DEPLOY.md` told the reader to set a model that `render.yaml`
+does not use.** The runbook's OpenRouter table said
+`ANTHROPIC_MODEL = anthropic/claude-opus-5` while the committed blueprint
+defaults to `meta-llama/llama-3.3-70b-instruct`. Following the runbook and
+applying the blueprint gave two different models with nothing flagging the
+disagreement. The table now names the committed default and mentions the
+Anthropic model as the better-answering alternative.

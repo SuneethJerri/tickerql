@@ -4,10 +4,15 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-A full-stack stock/crypto analytics platform with an **agentic text-to-SQL layer**.
-Daily OHLCV for 135 assets (11 GICS sectors + crypto) lands in Postgres; a FastAPI
-service exposes analytics endpoints plus a `/query` endpoint where an LLM turns a
+**tickerql** - a full-stack stock/crypto analytics platform with an **agentic
+text-to-SQL layer**. Daily OHLCV for 135 assets across 19 sectors (11 GICS, 7
+Indian NSE, plus crypto) lands in Postgres; a FastAPI service exposes analytics
+endpoints plus `/query` and `/query/stream`, where an LLM turns a
 natural-language question into read-only SQL; a React dashboard renders it.
+
+The Postgres schema stays `market` and the roles stay `sqlproj_*`. Renaming
+those means a migration and new credentials in four places for no benefit, so
+the old name survives below the application layer on purpose.
 
 ## The one non-negotiable constraint
 

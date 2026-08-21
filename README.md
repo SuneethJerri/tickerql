@@ -1,12 +1,18 @@
-# Market Analytics Platform
+# tickerql
 
-Daily OHLCV for 135 assets across the 11 GICS sectors, Indian equities and crypto, landing in
-Postgres, served by a FastAPI analytics layer, and queryable in plain English
-by an LLM agent that **cannot write to the database** — a property enforced by
-Postgres grants, not by prompt text.
+Daily OHLCV for 135 assets across 19 sectors — the 11 GICS sectors, seven
+Indian NSE sectors and crypto — landing in Postgres, served by a FastAPI
+analytics layer, and queryable in plain English by an LLM agent that **cannot
+write to the database**: a property enforced by Postgres grants, not by prompt
+text.
 
-React + Recharts dashboard on top. Three years of real market data, ingested
-and verified locally.
+React + Recharts dashboard on top, with a conversational Ask page that streams
+the agent's real progress as it works. Three years of market data, ingested and
+verified locally.
+
+The Postgres schema stays `market` and the database roles stay `sqlproj_*` —
+renaming those means a migration and new credentials everywhere for no benefit,
+so the earlier name survives below the application layer on purpose.
 
 ---
 
@@ -31,11 +37,11 @@ flowchart LR
 
   subgraph API["api/ — FastAPI"]
     AN["/api/analytics/*"]
-    AG["/api/query — text-to-SQL"]
+    AG["/api/query · /api/query/stream<br/>text-to-SQL"]
   end
 
   WEB["web/ — React + Recharts"]
-  CLAUDE["Claude Opus 5"]
+  CLAUDE["LLM<br/>Anthropic API or gateway"]
   GHA["GitHub Actions<br/>nightly cron"]
 
   YF --> BF & RF
@@ -137,7 +143,7 @@ uv pip install -e ./ingest -e ./api --no-deps
 .venv/bin/python -m ingest refresh-views
 .venv/bin/python -m ingest coverage          # 752 bars/equity, 1096/crypto
 
-.venv/bin/python -m pytest                   # 175 tests
+.venv/bin/python -m pytest                   # 246 tests
 
 .venv/bin/uvicorn app.main:app --reload                       # :8000
 cd web && npm install && npm run dev                         # :5173
@@ -232,7 +238,7 @@ Schema is `market`, not `public`.
 
 | Relation | Kind | Notes |
 |---|---|---|
-| `assets` | table | 105 rows. `ticker` unique, `asset_type ∈ {stock, crypto}`, `source_symbol` maps `BTC` → `BTC-USD`, `coingecko_id` for the mcap pass |
+| `assets` | table | 135 rows across 19 sectors. `ticker` unique, `asset_type ∈ {stock, crypto}`, `source_symbol` maps `BTC` → `BTC-USD` and `RELIANCE` → `RELIANCE.NS`, `coingecko_id` for the mcap pass, `currency` `USD`/`INR` |
 | `price_history` | table | PK `(asset_id, date)`. `close > 0` and `high >= low` enforced by CHECK |
 | `ingest_runs` | table | Per-run audit. **Deliberately not granted to the agent role** |
 | `daily_returns` | matview | Simple and log returns from `COALESCE(adj_close, close)` |
@@ -269,13 +275,19 @@ refresh takes an `ACCESS EXCLUSIVE` lock and stalls the API.
 | `GET` | `/api/analytics/sector-performance` | return, volatility, return/risk per sector |
 | `GET` | `/api/analytics/sector-index` | equal-weighted cumulative index, rebased to 100 |
 | `GET` | `/api/analytics/volatility` | volatility ranking |
-| `GET` | `/api/analytics/correlation` | pairwise matrix; 256 cells for 135 assets |
+| `GET` | `/api/analytics/correlation` | pairwise matrix; 18,225 cells for 135 assets |
 | `GET` | `/api/analytics/periods` | best/worst days or months |
 | `GET` | `/api/analytics/moving-averages/{ticker}` | 20/50/200-day, with a `is_partial` flag during ramp-up |
 | `GET` | `/api/analytics/risk-return` | the scatter feed |
 | `POST` | `/api/query` | natural language → SQL → answer |
+| `POST` | `/api/query/stream` | the same answer as server-sent events, reported as the agent works |
 
 Interactive docs at `/docs`.
+
+Both query routes accept a bounded `history` of prior turns, so a follow-up can
+refer back to earlier ones. The bound is enforced server-side — 12 turns and
+12,000 characters, trimmed rather than rejected — because an unbounded
+transcript is a billing problem, not an error anyone would see.
 
 `POST /api/query` always returns the SQL that produced the answer, plus every
 rejected candidate and why it was rejected, so an answer can be audited against
@@ -295,10 +307,60 @@ the query behind it:
 
 ---
 
+## Frontend
+
+Four views. The interesting constraint is colour, not data: the validated
+categorical palette clears eight hues on the *adjacent* pairlist (lines, bars)
+and only **three** on the *all-pairs* pairlist (scatter, small multiples). With
+19 sectors that is not close, so past the cap `sectorColor()` returns `null` and
+the caller must fold or facet — it never wraps around and reuses a hue. That
+single rule decided three of the four views.
+
+| View | Form | Why |
+|---|---|---|
+| **Dashboard** | 19 sector **small multiples**, shared y-domain, one hue | No colour cap at all: identity is the panel label, comparison is the shared scale. A 19-line chart is unreadable at any palette size |
+| **Risk vs return** | Scatter, two hues (equity/crypto), **six labelled extremes** | Labelling all 135 points printed one solid block of overlapping text. The six are computed from the data, so the set moves with the window |
+| **Correlation** | **19×19 sector means**, click a cell to drill into its assets | 135×135 is 18,225 cells and ~3,500 px tall. A sector cell is the mean of the pairwise correlations behind it, self-pairs excluded so intra-sector cells are not inflated by sector size |
+| **Ask** | Conversational transcript with live progress | Follow-ups refer back to earlier turns; every step is a real boundary in the agent loop, not a timer |
+
+Five themes (Light, Dark, Midnight, Graphite, Sepia) on one axis and four
+accents on another, so any accent works with any theme. Every theme surface is
+run through the dataviz validator against the series palette before it ships —
+[`web/scripts/README-themes.md`](web/scripts/README-themes.md) records the runs,
+and the validator is vendored beside it so the result can be reproduced from a
+clone rather than taken on trust.
+
+The validator reads colour and nothing else, so layout is checked by
+[`web/scripts/screenshot.py`](web/scripts/screenshot.py), which shoots every
+view in every theme at 1440px headless. Every layout defect found so far was a
+collision or an overflow that no validator can see.
+
+### The Ask page
+
+`POST /api/query/stream` reports the boundaries the agent loop already passes
+through — model call started and finished, candidate SQL produced, guard
+verdict, statement executing, rows returned — and the page renders those. Only
+the elapsed clock is computed in the browser. A progress display that invents
+phases on a timer lies exactly when the model is slow, which is when someone is
+watching it.
+
+Answers arrive as markdown and are rendered as markdown, including tables. That
+is done by a small renderer in
+[`web/src/components/Markdown.tsx`](web/src/components/Markdown.tsx) rather than
+a dependency: react-markdown plus remark-gfm is roughly 100 kB for six
+constructs. It builds React elements and never touches
+`dangerouslySetInnerHTML`, so model output cannot inject markup whatever it
+returns.
+
+---
+
 ## Data sources
 
-**yfinance is the OHLCV backbone for equities *and* crypto history.** Verified:
-16 tickers × 3 years in about 10 seconds.
+**yfinance is the OHLCV backbone for equities *and* crypto history.** Verified
+by fetching, not assumed: 100 tickers × 3 years in 5.1 seconds. Requests are
+chunked 40 at a time, so one bad ticker fails its own chunk instead of the whole
+run — which is not theoretical, `APD` failed transiently mid-backfill and
+succeeded on retry.
 
 **CoinGecko's keyless API caps historical data at 365 days** (`error_code
 10012`) — probed and confirmed, not assumed. It cannot supply the 2–3 years of
@@ -342,21 +404,26 @@ docs/     DECISIONS.md (every decision and every mistake), DEPLOY.md (runbook).
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest          # 175
+.venv/bin/python -m pytest          # 246
 ```
 
 | File | | Covers |
 |---|---:|---|
-| `test_db_privileges.py` | 33 | the security boundary, adversarially |
 | `test_guard.py` | 54 | AST validation, including data-modifying CTEs |
 | `test_api.py` | 35 | endpoint contracts and error paths |
+| `test_db_privileges.py` | 33 | the security boundary, adversarially |
+| `test_gateway_config.py` | 28 | base-URL and auth-style handling for non-Anthropic gateways |
 | `test_queries.py` | 22 | each analytics query against invariants — correlation symmetry, unit diagonal, moving-average ramp-up |
-| `test_agent.py` | 13 | the agent loop against a fake Anthropic client |
+| `test_query_stream.py` | 19 | conversation-history bounds, the SSE progress events, and the streaming route |
+| `test_agent.py` | 18 | the agent loop against a fake Anthropic client |
+| `test_ratelimit.py` | 16 | the sliding window, client identification, and the disable path |
+| `test_prompt.py` | 11 | prompt structure, cache markers, and that it describes the schema that exists |
 | `test_query_endpoint.py` | 10 | `/api/query` including the unconfigured 503 path |
-| `test_prompt.py` | 8 | schema/few-shot prompt structure and cache markers |
 
 The query tests recompute results independently in Python and compare, rather
-than asserting the shape of whatever the SQL happened to return.
+than asserting the shape of whatever the SQL happened to return. Several
+suites are additionally mutation-tested: a deliberate break is introduced and
+the run must fail, because a passing test that cannot fail proves nothing.
 
 ## Deployment
 

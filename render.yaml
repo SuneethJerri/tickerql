@@ -8,6 +8,13 @@
 
 services:
   - type: web
+    # Deliberately still `sqlproj-api` after the rename to tickerql. Render
+    # derives the public hostname from this name, so changing it moves the API
+    # to tickerql-api.onrender.com and every browser request from the deployed
+    # frontend 404s until VITE_API_BASE is updated on Vercel AND the frontend
+    # is rebuilt - Vite inlines that value at build time. Nobody sees this
+    # hostname but the bundle, so the rename buys nothing and costs an outage
+    # window. See docs/DEPLOY.md.
     name: sqlproj-api
     runtime: docker
 
@@ -36,7 +43,12 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false       # omit entirely to leave /api/query returning 503
       - key: CORS_ORIGINS
-        sync: false       # e.g. https://<project>.vercel.app
+        # Comma-separated, no spaces, no trailing slash, scheme included. Both
+        # Vercel origins during the tickerql transition - the old deployment
+        # hostname keeps resolving and keeps serving, so dropping it early
+        # 400s every request from it on the CORS preflight:
+        #   https://tickerql.vercel.app,https://text-to-sql-analytics-sql8.vercel.app
+        sync: false
 
       # --- non-secret configuration ----------------------------------------
       # Configured for OpenRouter. For the direct Anthropic API instead: model

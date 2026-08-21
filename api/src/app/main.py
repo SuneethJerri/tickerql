@@ -31,12 +31,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Stock & Crypto Analytics API",
+    title="tickerql API",
     version="0.1.0",
     description=(
-        "Analytics over daily OHLCV for 135 assets across the 11 GICS sectors "
-        "and crypto, plus an agentic text-to-SQL endpoint that runs against a "
-        "SELECT-only database role."
+        "Analytics over daily OHLCV for 135 assets across the 11 GICS sectors, "
+        "the Indian NSE and crypto - 19 sectors in all - plus an agentic "
+        "text-to-SQL endpoint that runs against a SELECT-only database role."
     ),
     lifespan=lifespan,
 )
@@ -138,4 +138,4 @@ def health() -> HealthResponse:
 
 @app.get("/", include_in_schema=False)
 def root() -> dict:
-    return {"service": "sqlproj-api", "docs": "/docs", "health": "/api/health"}
+    return {"service": "tickerql", "docs": "/docs", "health": "/api/health"}
