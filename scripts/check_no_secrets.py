@@ -40,6 +40,23 @@ PUBLIC = {
     "medium",
 }
 
+# Variables that are configuration by definition, never credentials. Their
+# values legitimately appear in committed defaults and docs. Listed by name
+# rather than by value so changing a CORS origin or model id does not require
+# touching this file. Anything not listed here is treated as a secret.
+NON_SECRET_KEYS = {
+    "CORS_ORIGINS",
+    "PRICE_SOURCE",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_AUTH_STYLE",
+    "AGENT_EFFORT",
+    "AGENT_MAX_TOKENS",
+    "API_POOL_MAX_SIZE",
+    "AGENT_POOL_MAX_SIZE",
+    "VITE_API_BASE",
+}
+
 MIN_LENGTH = 8
 
 
@@ -62,7 +79,7 @@ def collect() -> dict[str, str]:
                 continue
             key, _, value = line.partition("=")
             key, value = key.strip(), value.strip().strip("\"'")
-            if len(value) < MIN_LENGTH or value in PUBLIC:
+            if len(value) < MIN_LENGTH or value in PUBLIC or key in NON_SECRET_KEYS:
                 continue
             match = re.match(r"^\w+://[^:/]+:([^@]+)@", value)
             if match and match.group(1) not in PUBLIC:

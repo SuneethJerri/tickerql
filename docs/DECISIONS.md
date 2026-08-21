@@ -1139,3 +1139,62 @@ adding one is a visible decision. Findings report the variable name and where
 the value was found, never the value — the lesson from M-38. Verified
 non-vacuous by planting a real password in a tracked file: the check fails, and
 catches it both standalone and embedded in a derived connection URL.
+
+---
+
+## Switching the agent to Llama via OpenRouter
+
+**D-84 · `max_tokens` is configurable.** It was hardcoded at 8000. OpenRouter
+returns HTTP 402 when `max_tokens` exceeds what the account balance can cover
+("you requested up to 8000 tokens, but can only afford 1600"), so a fixed value
+makes the agent unusable on a small balance rather than merely limited.
+`AGENT_MAX_TOKENS` defaults to 8000 and is set to 4000 locally.
+
+**D-85 · The agent detects a tool call printed as text and retries once.**
+Llama 3.3 answered one test question correctly and, on the next, replied with
+the literal string `<function-run_sql>{"sql": ...}` as ordinary text instead of
+emitting a `tool_use` block. The loop found no tool block, treated the text as
+the final answer, and returned raw function-call syntax to the user as though
+it were an answer. `_looks_like_leaked_tool_call` now spots the common markers,
+nudges the model once, and only gives up if it repeats. This is a
+weaker-model failure mode; Claude did not exhibit it.
+
+**D-86 · The loop keys on content blocks, not `stop_reason`.** This was already
+true and turned out to matter: Llama 3.3 returns `stop_reason: "end_turn"`
+alongside a valid `tool_use` block, where Claude returns `"tool_use"`. Had the
+loop branched on `stop_reason` the agent would have silently stopped without
+running any SQL. Worth stating so nobody "tidies" it into a `stop_reason` check.
+
+**D-87 · One `.env`, with the local docker values commented rather than
+deleted.** Configuration was split across `.env` and `.env.neon`, which meant
+two files to keep in sync and two places to look. Now one file, pointing at
+Neon, with the docker alternative present but commented.
+
+### Mistakes
+
+**M-41 · Quoting `.env` values broke the test suite's own parser.** Values were
+quoted so `source` would not choke on the `&` in Neon connection strings
+(M-40). `api/tests/conftest.py` has its own minimal dotenv reader that did not
+strip quotes, so every URL arrived wrapped in literal `"` characters and all 33
+privilege tests failed. The failure looked like a pooling problem — the
+plausible hypothesis, since the URL had just moved to the pooled endpoint —
+and the actual cause was visible only in the parametrised test id. *Fix:* strip
+quotes in `conftest`, and prefer `DATABASE_URL_AGENT_DIRECT` for the privilege
+suite since those tests flip session settings a pooler discards. *Lesson:* a
+config format has as many parsers as there are readers, and the hand-rolled one
+is the one that breaks.
+
+**M-42 · Nearly recommended a model without running it.** The plan was to name
+a Llama model and move on. Actually calling it surfaced three things no amount
+of reasoning would have: `stop_reason` differs from Claude's, tool calls leak
+into text, and Llama 4 Maverick returns empty content for this prompt entirely.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| Llama tool calling via OpenRouter's Anthropic endpoint | Works; `stop_reason=end_turn` with a valid `tool_use` block |
+| Llama 4 Maverick | Returned zero content blocks — not usable here |
+| Leaked-tool-call detection | 5 tests; mutation-checked (disabling detection fails 3) |
+| Live agent, Llama 3.3, 3 questions | 3/3 correct SQL and answers, 7-13s each, 2 model calls each |
+| Full suite against Neon | 197 passed (90s; network-bound) |

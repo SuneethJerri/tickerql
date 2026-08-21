@@ -19,7 +19,13 @@ def _load_env() -> dict[str, str]:
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 key, _, value = line.partition("=")
-                env[key.strip()] = value.strip()
+                value = value.strip()
+                # Values are quoted in .env because the connection strings
+                # contain '&', which an unquoted `source` treats as job
+                # control. Strip the quotes as a dotenv parser would.
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                    value = value[1:-1]
+                env[key.strip()] = value
     return {**env, **os.environ}
 
 
@@ -30,7 +36,13 @@ def env() -> dict[str, str]:
 
 @pytest.fixture(scope="session")
 def agent_url(env) -> str:
-    url = env.get("DATABASE_URL_AGENT")
+    """Connection string for the restricted agent role.
+
+    Prefers the direct endpoint when one is configured: these tests flip
+    session-level settings, and a transaction pooler discards those between
+    statements.
+    """
+    url = env.get("DATABASE_URL_AGENT_DIRECT") or env.get("DATABASE_URL_AGENT")
     if not url:
         pytest.skip("DATABASE_URL_AGENT not configured")
     return url

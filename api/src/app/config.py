@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     # Blank omits output_config, which some gateways reject.
     agent_effort: str = "medium"
 
+    # Lower this if a gateway rejects the request on available credit.
+    agent_max_tokens: int = 8000
+
     max_rows: int = 5000
 
     model_config = SettingsConfigDict(

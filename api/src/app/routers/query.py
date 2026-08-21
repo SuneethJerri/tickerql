@@ -51,6 +51,7 @@ def _build_agent() -> SqlAgent:
         model=settings.anthropic_model,
         max_rows=settings.max_rows,
         effort=settings.agent_effort,
+        max_tokens=settings.agent_max_tokens,
     )
 
 

@@ -231,3 +231,50 @@ def test_values_are_json_serialisable(connect) -> None:
     json.dumps(result.rows)  # raises if anything is not serialisable
     assert isinstance(result.rows[0][0], str)    # date -> ISO string
     assert isinstance(result.rows[0][1], float)  # Decimal -> float
+
+
+# ---------------------------------------------------------------------------
+# Weaker models sometimes print the tool call instead of emitting a tool_use
+# block. Observed with llama-3.3-70b through OpenRouter: the reply was the
+# literal string '<function-run_sql>{"sql": ...}', which was being returned to
+# the user as though it were an answer.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "leaked",
+    [
+        '<function-run_sql>{"sql": "SELECT 1"}</function>',
+        '<tool_call>{"name": "run_sql", "arguments": {"sql": "SELECT 1"}}</tool_call>',
+        'I will call run_sql("SELECT ticker FROM market.assets")',
+    ],
+)
+def test_tool_call_printed_as_text_is_retried_not_returned(connect, leaked: str) -> None:
+    agent, client = build(
+        connect,
+        says(leaked),
+        runs_sql("SELECT ticker FROM market.assets ORDER BY ticker LIMIT 1"),
+        says("The first asset is AAPL."),
+    )
+    result = agent.answer("Name one asset.")
+
+    assert result.answer == "The first asset is AAPL."
+    assert leaked not in result.answer
+    assert result.model_calls == 3
+
+
+def test_a_normal_answer_is_not_mistaken_for_a_leaked_call(connect) -> None:
+    agent, _ = build(
+        connect,
+        runs_sql("SELECT count(*) FROM market.assets"),
+        says("There are 16 assets tracked across five sectors."),
+    )
+    result = agent.answer("How many assets?")
+    assert result.answer == "There are 16 assets tracked across five sectors."
+    assert result.model_calls == 2
+
+
+def test_persistent_leaking_gives_up_rather_than_looping(connect) -> None:
+    leaked = '<function-run_sql>{"sql": "SELECT 1"}</function>'
+    agent, _ = build(connect, says(leaked), says(leaked), says(leaked))
+    result = agent.answer("Name one asset.")
+    assert result.model_calls <= MAX_MODEL_CALLS

@@ -56,6 +56,21 @@ class AgentUnavailable(RuntimeError):
     """Raised when the agent cannot run - typically a missing API key."""
 
 
+_LEAKED_TOOL_CALL_MARKERS = (
+    "<function",
+    "<tool_call",
+    "run_sql(",
+    '"name": "run_sql"',
+    '"name":"run_sql"',
+)
+
+
+def _looks_like_leaked_tool_call(text: str) -> bool:
+    """True when the model printed its tool call instead of emitting one."""
+    lowered = text.lower()
+    return any(marker.lower() in lowered for marker in _LEAKED_TOOL_CALL_MARKERS)
+
+
 class AgentRefused(RuntimeError):
     """Raised when the model declines the request (stop_reason == 'refusal')."""
 
@@ -166,17 +181,19 @@ class SqlAgent:
         model: str = "claude-opus-5",
         max_rows: int = 1000,
         effort: str | None = "medium",
+        max_tokens: int = 8000,
     ) -> None:
         self._client = client
         self._connection_factory = connection_factory
         self._model = model
         self._max_rows = max_rows
         self._effort = effort
+        self._max_tokens = max_tokens
 
     def _call_model(self, messages: list[dict]) -> Any:
         kwargs: dict[str, Any] = dict(
             model=self._model,
-            max_tokens=8000,
+            max_tokens=self._max_tokens,
             system=system_blocks(),
             tools=[RUN_SQL_TOOL],
             messages=messages,
@@ -267,6 +284,21 @@ class SqlAgent:
 
             if not tool_uses:
                 answer_text = "\n".join(t.strip() for t in text_parts if t.strip())
+                # Some models emit the tool call as literal text instead of a
+                # tool_use block. Returning that verbatim would show the user
+                # raw function-call syntax as though it were an answer, so nudge
+                # once and only give up if it happens again.
+                if _looks_like_leaked_tool_call(answer_text) and calls < MAX_MODEL_CALLS:
+                    messages.append({"role": "assistant", "content": answer_text})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "That was written as text. Call the run_sql tool "
+                            "properly instead of describing the call."
+                        ),
+                    })
+                    answer_text = ""
+                    continue
                 break
 
             messages.append({"role": "assistant", "content": response.content})
