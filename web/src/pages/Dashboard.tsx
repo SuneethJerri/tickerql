@@ -3,12 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { api, fmtPct, type SectorPerformance } from "../api";
 import { SectorIndexChart } from "../charts/SectorIndexChart";
 import { PriceMaChart } from "../charts/PriceMaChart";
-import { SECTOR_ORDER, sectorColor, type Mode } from "../charts/palette";
+import type { ChartBase } from "../charts/palette";
 import { StatTile } from "../components/StatTile";
 import { TableView } from "../components/TableView";
 import { Card, ErrorNotice, Loading, WindowPicker } from "../components/ui";
 
-export function Dashboard({ mode }: { mode: Mode }) {
+export function Dashboard({ mode }: { mode: ChartBase }) {
   const [window, setWindow] = useState(365);
   const [ticker, setTicker] = useState("AAPL");
 
@@ -72,15 +72,15 @@ export function Dashboard({ mode }: { mode: Mode }) {
         />
       </div>
 
-      <div className="grid cols-2">
+      <div className="grid">
         <Card
           title="Sector performance"
-          subtitle={`Equal-weighted, indexed to 100 at the start of the window. One axis — indexing is what makes the sectors comparable.`}
+          subtitle="Equal-weighted and indexed to 100 at the start of the window, one panel per sector on a shared scale. Indian sectors are priced in INR, so their panels are local-currency returns and are not directly comparable with the USD ones."
         >
           {index.isPending ? <Loading /> : index.error ? <ErrorNotice error={index.error} /> : (
             <>
               <SectorIndexChart data={index.data!} mode={mode} />
-              <SectorTable rows={perf.data ?? []} mode={mode} />
+              <SectorTable rows={perf.data ?? []} />
             </>
           )}
         </Card>
@@ -98,19 +98,20 @@ export function Dashboard({ mode }: { mode: Mode }) {
   );
 }
 
-function SectorTable({ rows, mode }: { rows: SectorPerformance[]; mode: Mode }) {
-  const ordered = SECTOR_ORDER.map((s) => rows.find((r) => r.sector === s)).filter(
-    (r): r is SectorPerformance => Boolean(r),
+function SectorTable({ rows }: { rows: SectorPerformance[] }) {
+  // Ranked by return rather than by a fixed sector order. The swatch is gone
+  // with it: the panels above all wear one hue, so a coloured dot here would
+  // claim a sector-to-colour mapping that no longer exists.
+  const ordered = [...rows].sort(
+    (a, b) => (b.total_return ?? -Infinity) - (a.total_return ?? -Infinity),
   );
   return (
     <TableView
       label="sector table"
-      columns={["Sector", "Return", "Volatility", "Return / risk", "Days"]}
+      columns={["Sector", "Assets", "Return", "Volatility", "Return / risk", "Days"]}
       rows={ordered.map((r) => [
-        <>
-          <span className="swatch" style={{ background: sectorColor(r.sector, mode) }} />
-          {r.sector}
-        </>,
+        r.sector,
+        r.asset_count,
         fmtPct(r.total_return),
         fmtPct(r.annualized_volatility),
         r.return_per_unit_risk?.toFixed(2) ?? "—",

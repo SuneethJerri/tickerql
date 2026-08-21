@@ -3,7 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Market Analytics</title>
+    <title>tickerql — market analytics</title>
+    <script>
+      // Applied before first paint. Without this a user whose OS is light but
+      // who chose a dark theme sees a light flash on every load, because the
+      // React effect that stamps data-theme runs after the first paint.
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          var a = localStorage.getItem("accent");
+          var themes = ["light", "dark", "midnight", "graphite", "sepia"];
+          var accents = ["blue", "purple", "green", "orange"];
+          if (themes.indexOf(t) >= 0) document.documentElement.setAttribute("data-theme", t);
+          document.documentElement.setAttribute("data-accent", accents.indexOf(a) >= 0 ? a : "blue");
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

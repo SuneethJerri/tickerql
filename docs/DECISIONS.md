@@ -1289,3 +1289,196 @@ the code was run against it.
 | Shared secret | 401 on missing and on wrong key; accepted when correct; absent config requires none |
 | **Mutation tests** | Never blocking fails 6; recording blocked attempts fails the starvation test |
 | Full suite | 224 passed |
+
+## Universe expansion — 16 → 135 assets
+
+**M-47 · The Neon password leaked a second time, through a different reader.**
+`scripts/insights.py` carried its own dotenv parser that did not strip the
+wrapping quotes the `.env` values need (M-40). psycopg was handed a connection
+string with a literal leading `"`, rejected it, and echoed the whole string -
+password included - into the traceback. The first leak (M-38) was fixed in one
+script; the bug simply lived on in the other three copies. The fix is
+`scripts/_env.py`: one reader, imported everywhere. A config format has as many
+parsers as it has readers, and four parsers had already drifted apart. The user
+rotated again.
+
+**M-48 · Phases 1 and 1b shipped without a DECISIONS entry.** Commits `f8fb4c2`
+and `3ead5a5` changed the schema, the agent prompt, the ingestion source and
+nine test assertions, and touched this file not at all - against a standing
+instruction to log every decision and every mistake. Everything below is
+reconstructed after the fact, which is exactly the failure mode the standing
+instruction exists to prevent: the reasoning is thinner than it would have been
+written down at the time. Logged as a mistake rather than quietly backfilled.
+
+### Decisions
+
+**D-93 · Expected counts come from the database, not from a new constant.**
+Twelve assertions hardcoded `== 16`, `== 256` and `list(range(1, 17))`.
+Re-hardcoding them to 135 would have bought one release. A `universe` fixture in
+`conftest.py` reads count, sectors and minimum bar count from the DB, so the
+suite states relationships (every sector has at least three assets; every asset
+has at least 500 bars) rather than magic numbers.
+
+**D-94 · `yfinance` is fetched in chunks of 40.** A single un-chunked
+`yf.download` marks the whole run failed if one ticker fails. At 135 tickers
+that is a coin flip per run. Chunks fail independently and the rest continue.
+This was not theoretical: `APD` failed transiently mid-backfill and succeeded on
+retry, which under the old shape would have discarded 134 good fetches.
+
+**D-95 · The high-volatility test compares medians, not extremes.**
+`min(crypto) > max(equity)` held at 16 assets and broke at 105 - AMD at 70.6%
+annualised is more volatile than TRX at 26.5%. The claim worth pinning is that
+crypto is the high-volatility *block*, so the test compares medians (crypto
+69.4% vs equity 27.6%, 2.51x) and additionally asserts the three most volatile
+assets are all crypto. The old assertion's docstring would have blamed the
+annualisation factor for what is really one volatile semiconductor.
+
+**D-96 · Indian equities keep their own prefixed sectors.**
+`source_symbol` is `TICKER.NS`, `currency` is `INR`, and the sectors are named
+`India: IT`, `India: Financials` and so on rather than being merged into the
+GICS ones. Returns are percentage changes in the *local* currency, so an INR
+sector index is a valid local-currency series but comparing it against a USD
+sector silently mixes in the INR/USD rate. Prefixed sector names mean no chart
+can make that comparison without the reader seeing it, and the dashboard says so
+in the card subtitle. 17 of 18 candidate NSE tickers returned 745 bars over the
+3-year window; `TATAMOTORS.NS` is dead post-demerger and was dropped.
+
+**D-97 · Cross-market correlation needs no special handling.** NSE trades 745
+days against the US 753, with 718 overlapping. The correlation query already
+intersects on common dates - the same mechanism that stops crypto's weekend bars
+from dragging every crypto/equity pair toward zero - so cross-market pairs are
+computed over the days both markets were open, which is correct.
+
+### Mistakes
+
+**M-49 · MATIC-USD and POL-USD are both unusable, for the same reason.**
+Polygon rebranded mid-window: MATIC has 582 bars and stops, POL has 72 and
+starts. Neither covers the window and stitching them would invent a continuous
+series across a token migration. Replaced with TRX-USD. Found by the coverage
+gate, not by reading the tickers.
+
+**M-50 · A test-isolation defect I introduced.** Bare `Settings()` reads `.env`,
+so three assertions about *default* configuration were quietly asserting the
+developer's local config and would have passed or failed depending on whose
+machine ran them. Fixed with `_env_file=None` plus an autouse fixture that
+clears the relevant environment variables.
+
+## Frontend overhaul — themes, and the charts the expansion broke
+
+Phases 2-4 of the overhaul plan, done together because they turned out to be one
+change: expanding to 19 sectors broke three charts, and the palette work is what
+determines how each is fixed.
+
+### Decisions
+
+**D-98 · `sectorColor()` returns `null` past the categorical cap instead of
+wrapping.** The adjacent pairlist validates at eight hues; the all-pairs
+pairlist at three. There is no ninth hue to hand out, so the function returns
+`null` and the caller must decide - fold to "Other", or facet. Wrapping around
+is how the old five-slot version rendered a sixth sector in Technology's blue
+with no error anywhere.
+
+**D-99 · One `ChartBase`, declared by the theme.** There were two independent
+`Mode` unions, one in `useTheme.ts` and one in `palette.ts`, that typechecked
+against each other by accident. A theme now declares `chartBase: "light" |
+"dark"` and chart code asks the theme, so "which theme" and "which series set"
+are no longer the same question - which is what lets Midnight, Graphite and Dark
+share one validated series palette while carrying different surfaces.
+
+**D-100 · Accent is an alias, not a value.** The four accent hues are declared
+once per chart base as `--hue-*` tokens, and `[data-accent]` rules alias
+`--accent` to one of them with `var()`. `--accent-ink` moved into the theme
+blocks because the ink that sits on the accent follows the surface, not which
+hue was picked. This also removed `.btn { color: #fff }`, which was unreadable
+on the dark themes' brighter accent steps.
+
+**D-101 · Sector performance is small multiples, one hue for every panel.**
+Nineteen lines on one axis is unreadable at any palette size. Small multiples
+have no colour cap because identity comes from the panel label and comparison
+from a shared y-domain; colour encodes nothing, so every panel wears the
+emphasis hue. The y-domain is shared across all 19 panels deliberately - per
+panel autoscaling would draw a +0.4% sector and a -56% sector with the same
+amplitude, which is the standard way small multiples mislead.
+
+**D-102 · The risk scatter labels only the extremes.** At 16 assets every point
+was labelled and that was stronger than colour. At 135 it printed one solid
+block of overlapping text across the middle of the plot. Six extremes are
+computed from the data - best and worst return per unit risk, calmest and
+wildest, best and worst return - so the labelled set moves when the window does
+rather than being a hand-picked list that goes stale.
+
+**D-103 · Correlation defaults to sector x sector, with drill-down.** 135 x 135
+is 18,225 cells and about 3,500 px tall; 19 x 19 is 361 and fits on a screen.
+A sector cell is the *mean of the pairwise correlations* behind it, not a
+correlation of sector indices, because averaging the pairs answers the question
+the grid is read for. Self-pairs are excluded: the ticker diagonal is 1.0 by
+construction, so including `a === b` would pull every intra-sector cell toward 1
+by an amount that depends only on how many assets the sector has.
+
+**D-104 · Column headers are vertical.** `writing-mode: vertical-rl` plus a
+180-degree rotation, not `sideways-lr`, which only Firefox implements.
+
+**D-105 · The correlation legend is painted, not described.** The scale key used
+to read "Blue = moves oppositely - gray = unrelated - red = moves together" as
+prose. The swatches are now filled from `divergingColor()` itself, so the legend
+cannot disagree with the cells it is describing.
+
+**D-106 · `web/scripts/screenshot.py` exists so "I looked at every view" is
+reproducible.** Stdlib only, no Playwright, no second browser - it drives the
+Zen/Firefox already installed. It solves three things in the harness rather than
+in the app: a held-open image response delays the `load` event until React Query
+resolves (otherwise every shot captures the skeleton), a seed script writes the
+theme to `localStorage` ahead of the pre-paint script, and the tab is selected
+by clicking the nav button, since tabs are `useState` and have no URL yet.
+
+### Mistakes
+
+**M-51 · `SECTOR_ORDER` silently dropped 16 of 19 sectors.** The constant listed
+five names - `Technology`, `Energy`, `Financials`, `Healthcare`, `Crypto` - and
+the live universe has `Information Technology` and `Health Care`. So
+`SECTOR_ORDER.filter(...)` matched exactly three sectors, and both the sector
+chart and the sector table had been rendering a sixth of the data since the
+expansion landed, with no error and no failing test. The typecheck was clean
+throughout: the constant was internally consistent, just disconnected from the
+database. Found by looking at a screenshot, not by any tool.
+
+**M-52 · The same constant was silently degrading the correlation view.**
+`CorrelationPage` ranked tickers by `SECTOR_ORDER.indexOf(...)`, so 16 of 19
+sectors tied at the same rank and fell through to alphabetical. The sector
+blocks the matrix exists to show had stopped forming, and the chart still looked
+plausible - which is why it went unnoticed. Sector order is now derived from the
+assets themselves.
+
+**M-53 · The accent could not survive system dark mode.** The
+`prefers-color-scheme` block set `--accent` directly, at the same specificity as
+`[data-accent]` but later in the file, so a reader on system-dark who picked
+purple silently got blue. Found while restructuring, not by a test - there is no
+test here. Aliasing through `var()` removes the whole class of ordering bug
+rather than reordering two rules.
+
+**M-54 · The price chart printed the same month twice.** `minTickGap` picks
+ticks by pixel spacing and the formatter truncated to `YYYY-MM`, so two ticks
+inside one month rendered identical labels - "2025-10 ... 2025-10". Latent all
+along; it only became visible when the card went full width and the axis had
+room for more ticks. Fixed by supplying explicit month-start ticks.
+
+**M-55 · A few-shot example taught the exact mistake the prompt warns against.**
+`prompt.py` documents that `'Technology'` is not a valid sector and to use
+`'Information Technology'`. Two screens below, a worked example filtered on
+`a.sector IN ('Technology', 'Energy')` - and a worked example carries more
+weight with a model than the prose above it. The Phase 1 work updated the schema
+prose and the sector enum, and did not read the examples.
+`test_few_shot_sql_filters_on_sectors_that_exist` now pins every sector literal
+in `FEW_SHOTS` to a sector that exists; it fails on the old text and passes on
+the new one.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| Themes x tabs, screenshotted at 1440px | 24 shots (6 theme settings incl. system x 4 tabs), each opened and read |
+| Accent picker | graphite + purple shot: accent button, focus ring and selection ring all follow; `--accent-ink` stays legible |
+| Palette validator | 5 surfaces x adjacent (8 hues) and all-pairs (3 hues): all PASS, recorded in `web/scripts/README-themes.md` |
+| Typecheck / build | `tsc -b --noEmit` clean; `vite build` clean |
+| Mutation test | reverting the `'Technology'` few-shot fails the new test; restoring it passes |
+| Full suite | 227 passed |

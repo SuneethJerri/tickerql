@@ -2,7 +2,7 @@ import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import type { MovingAverageSeries } from "../api";
-import { MARK, emphasisColors, type Mode } from "./palette";
+import { MARK, emphasisColors, type ChartBase } from "./palette";
 import { Legend, TooltipCard } from "./ChartTooltip";
 
 /** Close price with moving-average overlays - an EMPHASIS form.
@@ -12,7 +12,7 @@ import { Legend, TooltipCard } from "./ChartTooltip";
  * thing the reader came for. So: price in the accent hue, averages in
  * de-emphasis grays at a thinner stroke.
  */
-export function PriceMaChart({ series, mode }: { series: MovingAverageSeries; mode: Mode }) {
+export function PriceMaChart({ series, mode }: { series: MovingAverageSeries; mode: ChartBase }) {
   const { primary, context } = emphasisColors(mode);
   const windows = [...series.windows].sort((a, b) => a - b);
 
@@ -27,6 +27,20 @@ export function PriceMaChart({ series, mode }: { series: MovingAverageSeries; mo
   }
   const rows = [...byDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
+  // Explicit month-start ticks. Letting recharts pick by pixel gap and then
+  // truncating the label to YYYY-MM printed the same month twice whenever two
+  // chosen ticks fell inside it - visible as "2025-10 ... 2025-10" once the
+  // card went full width and the axis had room for more ticks.
+  const monthTicks: string[] = [];
+  let lastMonth = "";
+  for (const row of rows) {
+    const month = String(row.date).slice(0, 7);
+    if (month !== lastMonth) {
+      monthTicks.push(String(row.date));
+      lastMonth = month;
+    }
+  }
+
   return (
     <>
       <Legend
@@ -40,7 +54,8 @@ export function PriceMaChart({ series, mode }: { series: MovingAverageSeries; mo
           <CartesianGrid stroke="var(--grid)" strokeWidth={1} vertical={false} />
           <XAxis
             dataKey="date" tick={{ fontSize: 11, fill: "var(--text-muted)" }}
-            tickLine={false} axisLine={{ stroke: "var(--border)" }} minTickGap={48}
+            tickLine={false} axisLine={{ stroke: "var(--border)" }}
+            ticks={monthTicks} interval="preserveStartEnd" minTickGap={40}
             tickFormatter={(d: string) => d.slice(0, 7)}
           />
           <YAxis

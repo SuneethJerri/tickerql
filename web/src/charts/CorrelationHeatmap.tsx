@@ -1,6 +1,5 @@
 import { useState } from "react";
-import type { CorrelationMatrix } from "../api";
-import { divergingColor, inkOn, type Mode } from "./palette";
+import { divergingColor, inkOn, type ChartBase } from "./palette";
 
 /** Correlation heatmap on a diverging scale.
  *
@@ -14,41 +13,78 @@ import { divergingColor, inkOn, type Mode } from "./palette";
  * Built with CSS grid rather than Recharts: a matrix of labelled cells is a
  * table that happens to be coloured, and the grid gives exact 2px surface gaps
  * and real text nodes for screen readers.
+ *
+ * Generic over its labels rather than hardcoding tickers, because the page now
+ * shows a sector matrix by default and drills down to tickers. Column headers
+ * are set vertically: at 135 tickers the horizontal ones overprinted each other
+ * into "CMCSADISGOOGLMETA".
  */
-export function CorrelationHeatmap({ matrix, mode }: { matrix: CorrelationMatrix; mode: Mode }) {
+export interface HeatValue {
+  correlation: number | null;
+  observations: number;
+}
+
+export function CorrelationHeatmap({
+  labels,
+  cellAt,
+  mode,
+  unit,
+  onSelect,
+}: {
+  labels: string[];
+  cellAt: (a: string, b: string) => HeatValue | undefined;
+  mode: ChartBase;
+  /** What one label names, for the hover readout: "days" or "pairs". */
+  unit: string;
+  onSelect?: (a: string, b: string) => void;
+}) {
   const [hover, setHover] = useState<{ a: string; b: string; v: number | null } | null>(null);
-  const tickers = matrix.tickers;
-  const lookup = new Map(matrix.cells.map((c) => [`${c.ticker_a}|${c.ticker_b}`, c]));
+  const wide = labels.some((l) => l.length > 6);
 
   return (
     <div>
       <div
         className="heatmap"
-        style={{ gridTemplateColumns: `44px repeat(${tickers.length}, minmax(26px, 1fr))` }}
+        style={{
+          gridTemplateColumns: `${wide ? 150 : 48}px repeat(${labels.length}, minmax(26px, 1fr))`,
+        }}
       >
         <div />
-        {tickers.map((t) => (
-          <div className="heat-axis" key={`col-${t}`}>{t}</div>
+        {labels.map((label) => (
+          <div className="heat-axis col" key={`col-${label}`} title={label}>
+            <span>{label}</span>
+          </div>
         ))}
-        {tickers.map((rowTicker) => (
-          <Row key={rowTicker} rowTicker={rowTicker} tickers={tickers}
-               lookup={lookup} mode={mode} onHover={setHover} />
+        {labels.map((rowLabel) => (
+          <Row
+            key={rowLabel}
+            rowLabel={rowLabel}
+            labels={labels}
+            cellAt={cellAt}
+            mode={mode}
+            unit={unit}
+            onHover={setHover}
+            onSelect={onSelect}
+          />
         ))}
       </div>
 
-      <div className="scale-legend" aria-hidden="true">
-        <span>−1</span>
-        <span
-          className="scale-bar"
-          style={{
-            background: `linear-gradient(90deg, ${divergingColor(-1, mode)}, ${divergingColor(0, mode)}, ${divergingColor(1, mode)})`,
-          }}
-        />
-        <span>+1</span>
-        <span style={{ marginLeft: 8 }}>
-          {hover
-            ? `${hover.a} vs ${hover.b}: ${hover.v?.toFixed(2) ?? "—"}`
-            : "Blue = moves oppositely · gray = unrelated · red = moves together"}
+      <div className="scale-legend">
+        {/* The poles are painted from divergingColor, not described in prose.
+            The sentence that used to sit here said "Blue = ... red = ..." and
+            would have silently lied the moment the scale was rethemed. */}
+        {[
+          { t: -1, label: "moves oppositely" },
+          { t: 0, label: "unrelated" },
+          { t: 1, label: "moves together" },
+        ].map(({ t, label }) => (
+          <span className="scale-key" key={label}>
+            <span className="scale-swatch" style={{ background: divergingColor(t, mode) }} />
+            {label}
+          </span>
+        ))}
+        <span className="scale-readout">
+          {hover ? `${hover.a} vs ${hover.b}: ${hover.v?.toFixed(2) ?? "—"}` : ""}
         </span>
       </div>
     </div>
@@ -56,31 +92,55 @@ export function CorrelationHeatmap({ matrix, mode }: { matrix: CorrelationMatrix
 }
 
 function Row({
-  rowTicker, tickers, lookup, mode, onHover,
+  rowLabel, labels, cellAt, mode, unit, onHover, onSelect,
 }: {
-  rowTicker: string;
-  tickers: string[];
-  lookup: Map<string, { correlation: number | null; observations: number }>;
-  mode: Mode;
+  rowLabel: string;
+  labels: string[];
+  cellAt: (a: string, b: string) => HeatValue | undefined;
+  mode: ChartBase;
+  unit: string;
   onHover: (v: { a: string; b: string; v: number | null } | null) => void;
+  onSelect?: (a: string, b: string) => void;
 }) {
   return (
     <>
-      <div className="heat-axis row">{rowTicker}</div>
-      {tickers.map((colTicker) => {
-        const cell = lookup.get(`${rowTicker}|${colTicker}`);
+      <div className="heat-axis row" title={rowLabel}>{rowLabel}</div>
+      {labels.map((colLabel) => {
+        const cell = cellAt(rowLabel, colLabel);
         const value = cell?.correlation ?? null;
         const background = value == null ? "var(--surface-2)" : divergingColor(value, mode);
+        const title =
+          `${rowLabel} vs ${colLabel}: ${value?.toFixed(3) ?? "no data"} ` +
+          `(${cell?.observations ?? 0} ${unit})`;
+        const content =
+          value == null ? "" : value.toFixed(1).replace(/^0\./, ".").replace(/^-0\./, "-.");
+
+        if (!onSelect) {
+          return (
+            <div
+              key={colLabel} className="heat-cell"
+              style={{ background, color: value == null ? "var(--text-muted)" : inkOn(background) }}
+              title={title}
+              onMouseEnter={() => onHover({ a: rowLabel, b: colLabel, v: value })}
+              onMouseLeave={() => onHover(null)}
+            >
+              {content}
+            </div>
+          );
+        }
         return (
-          <div
-            key={colTicker} className="heat-cell"
+          <button
+            key={colLabel} className="heat-cell selectable"
             style={{ background, color: value == null ? "var(--text-muted)" : inkOn(background) }}
-            title={`${rowTicker} vs ${colTicker}: ${value?.toFixed(3) ?? "no data"} (${cell?.observations ?? 0} shared days)`}
-            onMouseEnter={() => onHover({ a: rowTicker, b: colTicker, v: value })}
+            title={`${title} — click to see the assets`}
+            onMouseEnter={() => onHover({ a: rowLabel, b: colLabel, v: value })}
             onMouseLeave={() => onHover(null)}
+            onFocus={() => onHover({ a: rowLabel, b: colLabel, v: value })}
+            onBlur={() => onHover(null)}
+            onClick={() => onSelect(rowLabel, colLabel)}
           >
-            {value == null ? "" : value.toFixed(1).replace(/^0\./, ".").replace(/^-0\./, "-.")}
-          </div>
+            {content}
+          </button>
         );
       })}
     </>

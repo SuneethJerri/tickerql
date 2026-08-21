@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import type { RiskMetric } from "../api";
 import { fmtPct } from "../api";
-import { MARK, assetTypeColor, type Mode } from "./palette";
+import { MARK, assetTypeColor, type ChartBase } from "./palette";
 import { Legend, TooltipCard } from "./ChartTooltip";
 
 /** Risk vs return.
@@ -15,11 +15,15 @@ import { Legend, TooltipCard } from "./ChartTooltip";
  * ΔE 12.9 normal-vision against a floor of 15), and a search of all 56 five-hue
  * subsets of the palette found none that pass in both modes.
  *
- * So identity comes from a direct label on every one of the 16 points - which
- * is stronger than colour anyway - and hue carries the one split that matters
- * most in this data, equities vs crypto. Sector is in the tooltip and the table.
+ * Hue therefore carries the one split that matters most in this data, equities
+ * vs crypto, and identity comes from labels.
+ *
+ * At 16 assets every point was labelled. At 135 that printed one solid block of
+ * overlapping text in the middle of the plot - the labels stopped being
+ * identity and became noise. Only the extremes are labelled now: the corners a
+ * reader actually asks about. Everything else is hover plus the table.
  */
-export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Mode }) {
+export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: ChartBase }) {
   const usable = data.filter(
     (d) => d.annualized_volatility != null && d.annualized_return != null,
   );
@@ -30,6 +34,7 @@ export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Mo
     x: (d.annualized_volatility ?? 0) * 100,
     y: (d.annualized_return ?? 0) * 100,
     ticker: d.ticker,
+    label: labelled.has(d.ticker) ? d.ticker : "",
     name: d.name,
     sector: d.sector,
     drawdown: d.max_drawdown,
@@ -56,6 +61,24 @@ export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Mo
   const xDomain = pad(xs, 0.08);
   // More headroom vertically: labels sit above their marks.
   const yDomain = pad(ys, 0.14);
+
+  // The points worth naming: best and worst return per unit of risk, the
+  // calmest and the wildest, and the single best and worst return. Six
+  // questions, at most six labels, chosen from the data rather than by index
+  // so the set moves when the window does.
+  const labelled = new Set<string>();
+  const extremesOf = (
+    key: (d: RiskMetric) => number | null | undefined,
+  ) => {
+    const ranked = usable
+      .filter((d) => key(d) != null && Number.isFinite(key(d) as number))
+      .sort((a, b) => (key(b) as number) - (key(a) as number));
+    if (ranked[0]) labelled.add(ranked[0].ticker);
+    if (ranked.at(-1)) labelled.add(ranked.at(-1)!.ticker);
+  };
+  extremesOf((d) => d.return_per_unit_risk);
+  extremesOf((d) => d.annualized_volatility);
+  extremesOf((d) => d.annualized_return);
 
   return (
     <>
@@ -114,13 +137,12 @@ export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Mo
               stroke="var(--surface-1)" strokeWidth={MARK.surfaceRing}
               isAnimationActive={false}
             >
-              {/* Every point is labelled: 16 marks is few enough that identity
-                  should not depend on hue or on hovering — which is the whole
-                  reason this chart does not colour by sector. Text wears a text
-                  token, never the series hue. */}
+              {/* Only the extremes carry a label; the rest have an empty
+                  string, which renders nothing. Text wears a text token,
+                  never the series hue. */}
               <LabelList
-                dataKey="ticker" position="top" offset={7}
-                fontSize={10.5} fontWeight={550} fill="var(--text-secondary)"
+                dataKey="label" position="top" offset={7}
+                fontSize={10.5} fontWeight={600} fill="var(--text-primary)"
               />
             </Scatter>
           ))}

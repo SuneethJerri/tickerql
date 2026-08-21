@@ -1,32 +1,31 @@
 /**
  * Chart palette, validated rather than chosen by eye.
  *
- * Five categorical slots pass the adjacent pairlist (lines, bars) but hard-fail
- * all-pairs (scatter): magenta vs orange is dE 12.9, under the 15 floor. No
- * five-hue subset of 56 passes all-pairs in both modes, and only 2 of 70
- * four-hue subsets do. The risk/return scatter therefore uses two hues
- * (stock vs crypto) plus a direct label on every point.
+ * Eight categorical slots pass the ADJACENT pairlist (lines, bars) in both
+ * modes. The ALL-PAIRS pairlist used by scatter and small multiples caps at
+ * THREE - no five-hue subset of 56 passes it, and only 2 of 70 four-hue subsets
+ * do. So the risk/return scatter uses two hues (stock vs crypto), and the
+ * sector small multiples use one hue for every panel: position and the panel
+ * label carry sector identity, not colour, which is why that form survives 19
+ * sectors when a 19-line chart cannot.
  *
  * Re-run the validator if you change a colour here.
  */
 
-/** Fixed sector-to-slot assignment: colour follows the entity, not its rank,
- *  so filtering or re-sorting never repaints the survivors. */
-export const SECTOR_ORDER = [
-  "Technology",
-  "Energy",
-  "Financials",
-  "Healthcare",
-  "Crypto",
-] as const;
-
-export type Sector = (typeof SECTOR_ORDER)[number];
-
-/** Categorical slots 1-5, light and dark steps (dark is selected, not flipped). */
+/** Categorical slots 1-8, light and dark steps (dark is selected, not flipped).
+ *
+ * Eight is the ceiling on the ADJACENT pairlist (lines, bars) and is validated
+ * in both modes. The ALL-PAIRS pairlist used by scatter and small multiples
+ * caps at THREE - see SCATTER_HUES. There is no ordering of eight that clears
+ * all-pairs, so a ninth series folds into "Other" or the chart facets; hues are
+ * never generated. */
 const CATEGORICAL = {
-  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"],
-  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181"],
+  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"],
+  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
 } as const;
+
+/** The first three slots are the only ones that validate all-pairs. */
+export const SCATTER_HUE_CAP = 3;
 
 /** Two hues for the scatter - slots 1 and 2, all-pairs validated. */
 const ASSET_TYPE = {
@@ -42,15 +41,36 @@ const DIVERGING = {
   dark: { negative: "#3987e5", mid: "#383835", positive: "#e66767" },
 } as const;
 
-export type Mode = "light" | "dark";
+/** Chart series are selected for a light or a dark surface. A theme declares
+ *  which set it uses via `chartBase`; this is NOT the theme name. Re-declaring
+ *  a second `Mode` union here is what let the two drift silently before. */
+export type { ChartBase } from "../theme";
+import type { ChartBase } from "../theme";
 
-export function sectorColor(sector: string, mode: Mode): string {
-  const index = SECTOR_ORDER.indexOf(sector as Sector);
+/** Colour for a sector, assigned by position in `sectors`.
+ *
+ * Takes the caller's sector list rather than a fixed global order, because the
+ * universe now has 19 sectors and the old SECTOR_ORDER only knew five - an
+ * unknown sector fell back to slot 0 and rendered in Technology's blue with no
+ * error. Past the categorical cap this returns null so the caller must decide
+ * (fold to "Other", or facet); it never wraps around and reuses a hue. */
+export function sectorColor(
+  sector: string,
+  sectors: readonly string[],
+  mode: ChartBase,
+): string | null {
+  const index = sectors.indexOf(sector);
   const slots = CATEGORICAL[mode];
-  return slots[index >= 0 ? index : 0]!;
+  if (index < 0 || index >= slots.length) return null;
+  return slots[index]!;
 }
 
-export function assetTypeColor(assetType: string, mode: Mode): string {
+/** Neutral for anything past the categorical cap. */
+export function otherColor(mode: ChartBase): string {
+  return CONTEXT_GREYS[mode][0]!;
+}
+
+export function assetTypeColor(assetType: string, mode: ChartBase): string {
   return assetType === "crypto"
     ? ASSET_TYPE[mode].crypto
     : ASSET_TYPE[mode].stock;
@@ -62,15 +82,20 @@ export function assetTypeColor(assetType: string, mode: Mode): string {
  * subject and the moving averages are context. Giving each MA its own
  * categorical hue would imply four peer series and bury the point.
  */
-export function emphasisColors(mode: Mode) {
-  return {
-    primary: CATEGORICAL[mode][0]!,
-    context: mode === "light" ? ["#8a8985", "#a8a7a2", "#c3c2bd"] : ["#8f8e88", "#767570", "#5e5d59"],
-  };
+const CONTEXT_GREYS = {
+  light: ["#8a8985", "#a8a7a2", "#c3c2bd"],
+  dark: ["#8f8e88", "#767570", "#5e5d59"],
+} as const;
+
+export function emphasisColors(mode: ChartBase) {
+  // A keyed lookup, not a ternary. The ternary silently returned the dark
+  // greys for any value that was not exactly "light", so adding a chart base
+  // would have compiled and been wrong.
+  return { primary: CATEGORICAL[mode][0]!, context: [...CONTEXT_GREYS[mode]] };
 }
 
 /** Continuous mix across the diverging scale. `t` in [-1, 1]. */
-export function divergingColor(t: number, mode: Mode): string {
+export function divergingColor(t: number, mode: ChartBase): string {
   const { negative, mid, positive } = DIVERGING[mode];
   const clamped = Math.max(-1, Math.min(1, t));
   const target = clamped < 0 ? negative : positive;

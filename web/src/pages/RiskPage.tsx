@@ -2,11 +2,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, fmtCompact, fmtPct } from "../api";
 import { RiskReturnScatter } from "../charts/RiskReturnScatter";
-import { assetTypeColor, type Mode } from "../charts/palette";
+import { assetTypeColor, type ChartBase } from "../charts/palette";
 import { TableView } from "../components/TableView";
 import { Card, ErrorNotice, Loading, WindowPicker } from "../components/ui";
 
-export function RiskPage({ mode }: { mode: Mode }) {
+export function RiskPage({ mode }: { mode: ChartBase }) {
   const [window, setWindow] = useState(365);
   const risk = useQuery({
     queryKey: ["risk-return", window],
@@ -21,7 +21,7 @@ export function RiskPage({ mode }: { mode: Mode }) {
 
       <Card
         title="Risk versus return"
-        subtitle="Every tracked asset on one plane. Points are labelled rather than colour-coded by sector: a scatter puts arbitrary pairs side by side, and five sector hues cannot be told apart reliably enough for that. Sector is in the tooltip and the table."
+        subtitle="Every tracked asset on one plane, coloured by equity versus crypto only. A scatter puts arbitrary pairs side by side, which caps it at three distinguishable hues — nowhere near the 19 sectors, so sector lives in the tooltip and the table instead."
       >
         {risk.isPending ? <Loading height={340} /> : risk.error ? <ErrorNotice error={risk.error} /> : (
           <>
