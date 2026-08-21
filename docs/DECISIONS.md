@@ -908,3 +908,86 @@ but wrong, and a reader would have concluded the install was incomplete.
 | Correlation claim (251 shared days) | Confirmed: equity×crypto pairs report `observations: 251` |
 | Correlation query correctness | AAPL×MSFT and XOM×CVX reproduced to 4 dp by independent Python |
 | Insights regeneration | `scripts/insights.py --inject` round-trips cleanly |
+
+---
+
+## Debug run — all phases
+
+A full re-verification of Phases 0–6 against the committed tree, run after
+Phase 6 was complete. Every phase passed. Three of the *checks I wrote for it*
+did not, which is the part worth recording.
+
+### Mistakes
+
+**M-32 · Wrote a data-sanity gate on an assumption instead of on the schema.**
+The gate asserted `count(daily_returns) == count(price_history) - 16`, reasoning
+that the first bar per asset has no previous close and would be dropped. It is
+not dropped: `daily_returns` is defined as one row per bar with `simple_return`
+NULL on each asset's first date, and downstream consumers filter it
+(`WHERE dr.simple_return IS NOT NULL` in `sector_daily`). The view was right and
+the gate was wrong. *Cost:* one false alarm. *Fix:* replaced with four gates
+that assert the real invariant — exactly 16 NULL returns, each on its asset's
+minimum date, none after it, and no NaN leaking into `sector_daily`.
+
+**M-33 · Repeated M-17 inside the debug harness itself.** Checked
+`is_partial == (bars_used < 200)` for the 200-day moving average at
+`window_days=365`. Every row in that window has `bars_used = 200`, so both sides
+were `False` on all 251 rows and the assertion could not fail. This is the exact
+error M-17 recorded against the test suite, reproduced by me while verifying
+that the suite no longer has it. *Fix:* re-ran over full history, where the
+window genuinely ramps (198 partial rows, 554 full), and added an explicit
+"both partial and full rows present" precondition so a vacuous run reports
+itself. *Lesson:* a passing assertion is not evidence until you know it could
+have failed.
+
+**M-34 · A DOM selector that matched nothing, reporting a clean zero.** The
+render check counted `[data-corr-cell]` elements to verify the correlation
+heatmap. No such attribute exists — the cells are `.heat-cell` — so the check
+returned `0` on every page including the correlation page, and read as a
+successful measurement of an empty result rather than as a broken selector.
+Same shape as M-26. *Fix:* real selectors, and assertions with expected values
+(`256` cells, `32` axis labels, `16` diagonal cells) so a zero fails loudly
+instead of passing quietly. *Lesson:* a check whose failure mode is "returns 0"
+must assert a non-zero expectation, or it is decorative.
+
+### Verification evidence
+
+| Phase | Check | Result |
+|---|---|---|
+| 0 | `ingest probe` | yfinance OK; CoinGecko OK returning **8 bars for 8 days** — M-11's aggregation holding (a naive range fetch returns ~187 intraday points) |
+| 1 | `ingest migrate` re-run | Idempotent; all four migrations reapply cleanly |
+| 1 | Data sanity gates | 17/17 after correcting M-32: no duplicate keys, no `close <= 0`, no `high < low`, 753 bars/equity, 1096/crypto, every matview has a UNIQUE index |
+| 1 | Sector index rebasing | Matview compounds from all history; the API query rebases in-window, so all five sectors start at exactly 100.0000 |
+| 2 | `test_queries.py` | 22 passed |
+| 2 | Correlation invariants | Symmetric, unit diagonal, all values in [-1, 1] across 256 cells |
+| 2 | Correlation correctness | AAPL×MSFT and XOM×CVX reproduced to 4 dp by independent Python over the same date intersection |
+| 2 | Moving average | 20-day MA matches independent Python exactly; `bars_used` ramps 1→200 over full history |
+| 3 | Live endpoints | 18/18 — 14 happy paths and 4 error paths (404 unknown ticker, 422 bad window, 422 bad granularity, 404 unknown route) |
+| 3 | CORS | Allowed origin echoed; disallowed origin gets no `Access-Control-Allow-Origin` |
+| 3 | `test_api.py` | 35 passed |
+| 4 | Privilege suite | 33 passed |
+| 4 | **Independent adversarial probe** | 18 attacks (DML, DDL, `COPY TO PROGRAM`, `CREATE EXTENSION`, `SET ROLE`, `ALTER ROLE ... SUPERUSER`, data-modifying CTE, catalog reads) — **18/18 blocked with `default_transaction_read_only` both on and off**. Error type shifts from `ReadOnlySqlTransaction` to `InsufficientPrivilege` when the flag is off, which is the evidence that the grants, not the session flag, are what block writes |
+| 4 | Guard probe (freshly written) | 29/29 — 22 rejections each firing on the correct node, 7 legitimate queries accepted with LIMIT injected |
+| 4 | Agent / prompt / endpoint suites | 13 + 8 + 10 passed |
+| 5 | `npm ci` then build | Both clean; 666 kB bundle (191 kB gzip) |
+| 5 | Render check, 4 views × 2 themes | No console errors, no horizontal overflow; **all 9 line paths unbroken** (M-23), integer y-ticks (M-24), 2 sparing end-labels (M-25), **16/16 scatter labels** (M-26) |
+| 5 | Correlation heatmap | 256 cells, 32 axis labels, 16 diagonal cells reading 1.0, sector-ordered Tech → Energy → Financials → Healthcare → Crypto; tooltips confirm "251 shared days" for crypto/equity pairs |
+| 5 | Ask page | Submitting a question renders "Natural-language queries are not configured." — the 503 guidance, not a raw error |
+| 6 | Image rebuild | Succeeds; build-time layout assertion passes |
+| 6 | Container against live DB | All endpoints 200; `/api/query` 503 for a valid question, 422 for one too short |
+| 6 | Container hygiene | No `.env` or secret-like file in the image; runs as uid 10001; pool sizes honoured from env (`api max=4, agent max=3`) |
+| 6 | Container CORS | Honours `CORS_ORIGINS` from the environment; rejects everything else |
+| 6 | README quickstart | Reproduced in a clean venv — installs resolve and pin `anthropic==0.125.0`, confirming D-71 |
+| all | `pytest` | **175 passed** |
+
+### Known limitations, not defects
+
+- Scatter point labels crowd slightly at `COP`/`GS` and `UNH`/`NVDA`. Recharts'
+  `LabelList` has no collision avoidance. Readable at 1440px; would need a
+  custom label layout to fix properly.
+- The guard rejects `dblink(...)` via the table allowlist (`Relation '' is not
+  readable`) rather than the function denylist, because sqlglot parses it as a
+  table-valued function. Rejected either way, but the message is less
+  informative than it could be.
+- Bundle is 666 kB (191 kB gzip), Recharts-dominated. Fine for four views; would
+  want code-splitting before it grows.
