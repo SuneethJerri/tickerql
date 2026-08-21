@@ -164,7 +164,7 @@ export function AskPage() {
       {unavailable && (
         <div className="notice ask-notice">
           <strong>Natural-language queries are not configured.</strong>
-          <div className="muted">Every other view on this dashboard works without it.</div>
+          <div className="hint muted">Every other view on this dashboard works without it.</div>
         </div>
       )}
     </Card>

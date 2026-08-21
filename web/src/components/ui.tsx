@@ -38,9 +38,9 @@ export function ErrorNotice({ error }: { error: unknown }) {
   return (
     <div className="notice error">
       <strong>Could not load this view.</strong>
-      <div style={{ marginTop: 4 }}>{message}</div>
+      <div>{message}</div>
       {offline && (
-        <div style={{ marginTop: 8 }} className="muted">
+        <div className="hint muted">
           Is the API running? <code>uvicorn app.main:app --reload</code>
         </div>
       )}

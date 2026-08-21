@@ -198,7 +198,7 @@ body {
   background: var(--surface-0);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: var(--text-base);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -221,7 +221,7 @@ body {
 @supports not (backdrop-filter: blur(1px)) {
   .topbar { background: var(--surface-1); }
 }
-.brand { font-weight: 650; letter-spacing: -0.01em; margin-right: 4px; }
+.brand { font-weight: 650; letter-spacing: -0.01em; margin-right: var(--space-1); }
 .nav { display: flex; gap: 2px; }
 .nav button {
   background: none; border: none; cursor: pointer;
@@ -260,64 +260,79 @@ body {
   clip-path: inset(50%); white-space: nowrap;
 }
 
-.content { padding: 24px; max-width: 1400px; width: 100%; margin: 0 auto; flex: 1; }
+.content { padding: var(--space-6); max-width: 1400px; width: 100%; margin: 0 auto; flex: 1; }
 
-.grid { display: grid; gap: 16px; }
+.grid { display: grid; gap: var(--space-4); }
 .grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); }
-.grid.kpi { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.grid.kpi {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin-bottom: var(--space-4);
+}
 
 /* ---------- cards ---------- */
 .card {
   background: var(--surface-1);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px 20px 12px;
+  padding: var(--space-5) var(--space-5) var(--space-3);
   box-shadow: var(--shadow);
   min-width: 0;
 }
-.card h2 { font-size: 15px; font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }
-.card .subtitle { font-size: 12.5px; color: var(--text-muted); margin: 0 0 14px; }
+.card h2 { font-size: var(--text-lg); font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }
+.card .subtitle { font-size: var(--text-sm); color: var(--text-muted); margin: 0 0 var(--space-4); }
 
 /* ---------- stat tiles ---------- */
 .stat { display: flex; flex-direction: column; gap: 2px; }
-.stat .label { font-size: 12px; color: var(--text-muted); }
-.stat .value { font-size: 26px; font-weight: 620; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.stat .delta { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.stat .label { font-size: var(--text-sm); color: var(--text-muted); }
+.stat .value { font-size: var(--text-2xl); font-weight: 620; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.stat .delta { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .delta.up { color: var(--good); }
 .delta.down { color: var(--critical); }
 
 /* ---------- controls (one row, above the charts) ---------- */
-.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; }
-.control { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+.controls {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--space-3); margin-bottom: var(--space-4);
+}
+.control {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-sm); color: var(--text-secondary);
+}
 select, input[type="text"], textarea {
   font: inherit; color: var(--text-primary);
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
-  border-radius: 7px; padding: 5px 9px;
+  border-radius: var(--radius-sm); padding: 5px 9px;
 }
 select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-visible {
   outline: 2px solid var(--accent); outline-offset: 1px;
 }
-.segmented { display: inline-flex; background: var(--surface-2); border-radius: 7px; padding: 2px; }
+.segmented {
+  display: inline-flex; background: var(--surface-2);
+  border-radius: var(--radius-sm); padding: 2px;
+}
 .segmented button {
-  border: none; background: none; cursor: pointer; font: inherit; font-size: 13px;
-  padding: 4px 10px; border-radius: 5px; color: var(--text-secondary);
+  border: none; background: none; cursor: pointer; font: inherit; font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-3); border-radius: 5px; color: var(--text-secondary);
 }
 .segmented button[aria-pressed="true"] { background: var(--surface-1); color: var(--text-primary); box-shadow: var(--shadow); }
 
 .chip {
   border: 1px solid var(--border-strong); background: var(--surface-1);
-  border-radius: 999px; padding: 3px 10px; font-size: 12.5px; cursor: pointer;
+  border-radius: var(--radius-full); padding: 3px var(--space-3); font-size: var(--text-sm); cursor: pointer;
   color: var(--text-secondary); display: inline-flex; align-items: center; gap: 6px;
 }
 .chip[aria-pressed="true"] { color: var(--text-primary); border-color: currentColor; }
-.chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+.chip .dot { width: 8px; height: 8px; border-radius: var(--radius-full); }
 
 /* ---------- legend: always present for >= 2 series ---------- */
-.legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 4px 0 2px; }
-.legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text-secondary); }
+.legend { display: flex; flex-wrap: wrap; gap: var(--space-4); margin: var(--space-1) 0 2px; }
+.legend-item {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-sm); color: var(--text-secondary);
+}
 .legend-key { width: 14px; height: 3px; border-radius: 2px; }
-.legend-key.dot { width: 9px; height: 9px; border-radius: 50%; }
+.legend-key.dot { width: 9px; height: 9px; border-radius: var(--radius-full); }
 
 /* ---------- small multiples ---------- */
 /* Sized so ~5 panels fit a half-width card at 1440px and the grid reflows to 2
@@ -345,27 +360,30 @@ select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-
 .tooltip {
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
-  border-radius: 8px; padding: 8px 10px;
-  box-shadow: var(--shadow); font-size: 12.5px;
+  border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
+  box-shadow: var(--shadow); font-size: var(--text-sm);
   color: var(--text-primary); min-width: 130px;
 }
-.tooltip .tt-title { font-weight: 600; margin-bottom: 4px; }
-.tooltip .tt-row { display: flex; align-items: center; gap: 7px; justify-content: space-between; }
-.tooltip .tt-name { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.tooltip .tt-title { font-weight: 600; margin-bottom: var(--space-1); }
+.tooltip .tt-row { display: flex; align-items: center; gap: var(--space-2); justify-content: space-between; }
+.tooltip .tt-name { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-secondary); }
 .tooltip .tt-val { font-variant-numeric: tabular-nums; }
 
 /* ---------- table view (the accessibility fallback) ---------- */
 .table-toggle {
-  background: none; border: none; cursor: pointer; font: inherit; font-size: 12.5px;
-  color: var(--text-muted); padding: 4px 0; text-decoration: underline;
+  background: none; border: none; cursor: pointer; font: inherit; font-size: var(--text-sm);
+  color: var(--text-muted); padding: var(--space-1) 0; text-decoration: underline;
   text-underline-offset: 3px;
 }
-table.data { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 8px; }
-table.data th, table.data td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+table.data { width: 100%; border-collapse: collapse; font-size: var(--text-sm); margin-top: var(--space-2); }
+table.data th, table.data td { text-align: right; padding: 5px var(--space-2); border-bottom: 1px solid var(--border); }
 table.data th:first-child, table.data td:first-child { text-align: left; }
 table.data th { color: var(--text-muted); font-weight: 550; }
 table.data td { font-variant-numeric: tabular-nums; }
-table.data .swatch { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 7px; }
+table.data .swatch {
+  width: 8px; height: 8px; border-radius: var(--radius-full);
+  display: inline-block; margin-right: var(--space-2);
+}
 
 /* ---------- heatmap ---------- */
 .heatmap { display: grid; gap: 2px; overflow-x: auto; }
@@ -511,8 +529,14 @@ pre.sql-text {
 
 .notice {
   border: 1px solid var(--border-strong); border-left: 3px solid var(--accent);
-  background: var(--surface-2); border-radius: 7px; padding: 12px 14px; font-size: 13px;
+  background: var(--surface-2); border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4); font-size: var(--text-sm);
 }
+/* Stacked children inside a notice used to carry inline marginTop props in
+   three different files, drifting between 4 and 8px. */
+.notice > * + * { margin-top: var(--space-1); }
+.notice > .hint { margin-top: var(--space-2); }
+.notice ul { margin: var(--space-1) 0 0; padding-left: var(--space-5); }
 .notice.error { border-left-color: var(--critical); }
 .notice code { font-family: var(--font-mono); font-size: 12px; }
 
@@ -520,7 +544,7 @@ pre.sql-text {
 .mono { font-family: var(--font-mono); }
 .skeleton {
   background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-1) 50%, var(--surface-2) 75%);
-  background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 6px;
+  background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: var(--radius-sm);
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
 /* Motion. Charts keep isAnimationActive={false} - that was a deliberate call,

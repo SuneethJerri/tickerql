@@ -51,7 +51,7 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
         </span>
       </div>
 
-      <div className="grid kpi" style={{ marginBottom: 16 }}>
+      <div className="grid kpi">
         <StatTile label="Assets tracked" value={String(assets.data?.length ?? "—")} />
         <StatTile
           label="Best risk-adjusted sector"

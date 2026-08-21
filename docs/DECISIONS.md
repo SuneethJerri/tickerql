@@ -1587,3 +1587,21 @@ through the proxy would have shown it in seconds, and did, once I ran it.
 | Live, against Neon + OpenRouter | events streamed with real gaps (0.0s → 4.1s → 7.9s → 10.2s); a follow-up resolved "them" from the prior turn with neither referent in the question |
 | Rendered | live progress and finished answers screenshotted in Light, Midnight and Graphite; a markdown table answer renders as a real table |
 | Full suite | 246 passed |
+
+## Phase 3 — the refinement sweep finished
+
+**D-118 · Every raw pixel literal that had a token now uses it.** 31 rules
+snapped to `--space-*`, `--radius-*` and `--text-*`. Where a literal sat between
+two steps it moved onto the 4px grid rather than gaining a bespoke token: a
+scale with an escape hatch for every value is a list, not a scale. Values that
+are genuinely not spacing - the 8px legend dot, the 44px textarea minimum, the
+1400px content cap - stay literal.
+
+**D-119 · Stacked children inside `.notice` are spaced by CSS.** The same
+`marginTop: 4` / `marginTop: 8` pair was inlined in three files and had already
+drifted. It is now `.notice > * + *` plus a `.hint` class for the wider gap.
+
+The only inline `style` props left are data-driven: a series colour, a computed
+heat-cell background, a grid template sized by the number of columns, and the
+skeleton's height prop. Those belong in the markup - they are values the
+stylesheet cannot know.
