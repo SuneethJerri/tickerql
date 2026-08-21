@@ -25,6 +25,32 @@ from fake_anthropic import ScriptedClient, runs_sql, says
 # common mistake when pointing the SDK at a gateway.
 # ---------------------------------------------------------------------------
 
+# Settings resolves from three places: constructor args, the process
+# environment, then the repo-root .env. Asserting a "default" is only
+# meaningful with the latter two out of the way -- these tests passed until a
+# real key and gateway were added to .env, then failed on a change that broke
+# nothing. `_env_file=None` alone is not enough: environment variables outrank
+# the dotenv file, so they have to be cleared too.
+CONFIGURABLE = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_AUTH_STYLE",
+    "AGENT_EFFORT",
+)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_environment(monkeypatch):
+    for name in CONFIGURABLE:
+        monkeypatch.delenv(name, raising=False)
+
+
+def defaults() -> Settings:
+    """Settings resolved from code defaults alone."""
+    return Settings(_env_file=None)
+
+
 @pytest.mark.parametrize(
     "configured, expected",
     [
@@ -38,21 +64,21 @@ from fake_anthropic import ScriptedClient, runs_sql, says
     ],
 )
 def test_base_url_is_normalised(configured, expected) -> None:
-    assert Settings(anthropic_base_url=configured).anthropic_base_url == expected
+    assert Settings(_env_file=None, anthropic_base_url=configured).anthropic_base_url == expected
 
 
 def test_base_url_defaults_to_none_meaning_direct() -> None:
     """Unset must mean api.anthropic.com, not an empty string that breaks the SDK."""
-    assert Settings().anthropic_base_url is None
+    assert defaults().anthropic_base_url is None
 
 
 def test_auth_style_defaults_to_api_key() -> None:
-    assert Settings().anthropic_auth_style == "api_key"
+    assert defaults().anthropic_auth_style == "api_key"
 
 
 def test_auth_style_rejects_unknown_values() -> None:
     with pytest.raises(ValueError):
-        Settings(anthropic_auth_style="oauth")
+        Settings(_env_file=None, anthropic_auth_style="oauth")
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +101,7 @@ def test_bearer_style_sends_authorization() -> None:
 def test_normalised_base_url_produces_a_single_v1_segment() -> None:
     """The whole point of the validator, asserted end to end against the SDK."""
     anthropic = pytest.importorskip("anthropic")
-    settings = Settings(anthropic_base_url="https://openrouter.ai/api/v1")
+    settings = Settings(_env_file=None, anthropic_base_url="https://openrouter.ai/api/v1")
     client = anthropic.Anthropic(auth_token="k", base_url=settings.anthropic_base_url)
     assert str(client.base_url).rstrip("/") == "https://openrouter.ai/api"
     assert "/v1/v1" not in str(client.base_url)
@@ -134,4 +160,4 @@ def test_omitting_effort_does_not_disturb_the_rest_of_the_request(connect) -> No
 
 
 def test_default_effort_is_medium() -> None:
-    assert Settings().agent_effort == "medium"
+    assert defaults().agent_effort == "medium"

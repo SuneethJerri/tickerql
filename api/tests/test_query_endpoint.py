@@ -21,9 +21,18 @@ def client():
         yield c
 
 
-def test_returns_503_with_setup_guidance_when_unconfigured(client) -> None:
+def test_returns_503_with_setup_guidance_when_unconfigured(client, monkeypatch) -> None:
     """The analytics endpoints work without a key; only this one needs it, and
-    the error should say so rather than looking like an outage."""
+    the error should say so rather than looking like an outage.
+
+    The unconfigured state is forced here rather than inherited from the
+    environment: this test used to depend on the developer's .env having no
+    ANTHROPIC_API_KEY, so it began failing the moment a real key was added.
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "anthropic_api_key", None)
     r = client.post("/api/query", json={"question": "Which sector is most volatile?"})
     assert r.status_code == 503
     detail = r.json()["detail"]
