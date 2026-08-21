@@ -169,3 +169,31 @@ def test_prompt_lists_every_real_sector(owner_url) -> None:
 
     missing = {s for s in sectors if f"'{s}'" not in SYSTEM_PROMPT}
     assert not missing, f"sectors absent from the prompt: {sorted(missing)}"
+
+
+def test_few_shot_sql_filters_on_sectors_that_exist(owner_url) -> None:
+    """The prose enumerating the sectors was updated when the universe grew; a
+    few-shot example filtering on 'Technology' was not. It sat two screens below
+    the prompt's own note that 'Technology' is not a valid sector, and a worked
+    example carries more weight with the model than the prose above it - so the
+    net effect was to teach the exact mistake the note warns against.
+
+    Checked over FEW_SHOTS only. SYSTEM_PROMPT deliberately names the invalid
+    spellings in order to rule them out.
+    """
+    import re
+
+    import psycopg
+
+    with psycopg.connect(owner_url) as conn, conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT sector FROM market.assets WHERE is_active")
+        sectors = {r[0] for r in cur.fetchall()}
+
+    used: set[str] = set()
+    for _question, sql in FEW_SHOTS:
+        for clause in re.findall(r"sector\s*(?:=|IN)\s*(\(?[^)\n]*\)?)", sql, re.I):
+            used.update(re.findall(r"'([^']+)'", clause))
+
+    assert used, "no sector literal found in the few-shot SQL - has it changed shape?"
+    unknown = used - sectors
+    assert not unknown, f"few-shot SQL filters on sectors that do not exist: {sorted(unknown)}"

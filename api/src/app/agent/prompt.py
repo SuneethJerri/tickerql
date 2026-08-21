@@ -220,7 +220,7 @@ LIMIT 5""",
 FROM market.asset_metrics m
 JOIN market.assets a ON a.id = m.asset_id
 WHERE m.window_days = 365
-  AND a.sector IN ('Technology', 'Energy')
+  AND a.sector IN ('Information Technology', 'Energy')
 GROUP BY a.sector
 ORDER BY avg_daily_volume DESC""",
     ),
