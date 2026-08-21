@@ -11,7 +11,7 @@ const queryClient = new QueryClient({
       staleTime: 5 * 60_000,
       refetchOnWindowFocus: false,
       retry: (failureCount, error) => {
-        // A 4xx is the API telling us the request was wrong — retrying it will
+        // A 4xx is the API telling us the request was wrong - retrying it will
         // produce the same answer more slowly.
         const status = (error as { status?: number })?.status;
         if (status && status >= 400 && status < 500) return false;

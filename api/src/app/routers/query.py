@@ -2,7 +2,7 @@
 
 This is the only route that executes SQL it did not author. It runs through
 `SqlAgent`, which validates every candidate statement and executes it as
-`sqlproj_agent` — a role with SELECT on five relations and no write grant.
+`sqlproj_agent` - a role with SELECT on five relations and no write grant.
 """
 
 from __future__ import annotations
@@ -32,10 +32,7 @@ def _build_agent() -> SqlAgent:
         )
     import anthropic
 
-    # Anthropic wants the key in `x-api-key`; gateways that speak the Messages
-    # format (OpenRouter among them) want `Authorization: Bearer`. The SDK
-    # exposes both — `api_key` sets the former, `auth_token` the latter — so
-    # supporting a gateway needs no HTTP-level special casing.
+    # Anthropic uses x-api-key; gateways use Authorization: Bearer.
     credential = (
         {"auth_token": settings.anthropic_api_key}
         if settings.anthropic_auth_style == "bearer"

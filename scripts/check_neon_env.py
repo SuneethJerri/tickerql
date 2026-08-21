@@ -3,7 +3,7 @@
 
 Written after M-38: the previous inline version masked passwords by parsing the
 URL and reformatting it, so when parsing failed it fell through to printing the
-raw string — the live password. The rule here is the inverse: nothing is
+raw string - the live password. The rule here is the inverse: nothing is
 printed unless it was successfully parsed, and the password field is never
 included in any output path at all.
 

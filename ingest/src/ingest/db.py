@@ -113,7 +113,7 @@ def refresh_views(conn: psycopg.Connection, concurrently: bool = True) -> list[s
                 try:
                     cur.execute(stmt)
                 except psycopg.errors.ObjectNotInPrerequisiteState:
-                    # Never populated — CONCURRENTLY is not allowed yet.
+                    # Never populated - CONCURRENTLY is not allowed yet.
                     log.info("%s not yet populated; plain refresh", view)
                     cur.execute(
                         sql.SQL("REFRESH MATERIALIZED VIEW {}").format(
@@ -147,7 +147,7 @@ def load_assets(conn: psycopg.Connection, only: Sequence[str] | None = None) -> 
 
 
 def latest_dates(conn: psycopg.Connection) -> dict[int, date]:
-    """Most recent bar per asset — the resume checkpoint.
+    """Most recent bar per asset - the resume checkpoint.
 
     The checkpoint lives in the data itself rather than a side file, so it can
     never disagree with what was actually persisted.

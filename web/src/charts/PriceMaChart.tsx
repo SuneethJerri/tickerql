@@ -5,7 +5,7 @@ import type { MovingAverageSeries } from "../api";
 import { MARK, emphasisColors, type Mode } from "./palette";
 import { Legend, TooltipCard } from "./ChartTooltip";
 
-/** Close price with moving-average overlays — an EMPHASIS form.
+/** Close price with moving-average overlays - an EMPHASIS form.
  *
  * The close is the subject; the averages are context derived from it. Giving
  * each MA its own categorical hue would imply four peer series and bury the

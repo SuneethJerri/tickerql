@@ -1,11 +1,7 @@
 """Analytics endpoints.
 
-Every endpoint is a thin wrapper over a named query in db/queries/. No SQL is
-written here: the queries are tested independently, and keeping the HTTP layer
-free of SQL means an endpoint change cannot quietly alter the maths.
-
-Handlers are `def`, not `async def`, so FastAPI runs them in its threadpool
-alongside synchronous psycopg. See app/db.py.
+Each is a thin wrapper over a named query in db/queries/; no SQL is written
+here. Handlers are sync `def` so FastAPI runs them in its threadpool.
 """
 
 from __future__ import annotations
@@ -148,7 +144,7 @@ def sector_index(window: WindowDays = 365) -> list[SectorIndexPoint]:
 
 
 # ---------------------------------------------------------------------------
-# Risk metrics — one query, two views
+# Risk metrics - one query, two views
 # ---------------------------------------------------------------------------
 
 @router.get("/analytics/volatility", response_model=list[AssetRiskMetricOut])

@@ -35,7 +35,7 @@ def request_with_backoff(
 ) -> httpx.Response:
     """Issue a request, retrying transient failures.
 
-    Honours `Retry-After` when the provider sends it — guessing a backoff when
+    Honours `Retry-After` when the provider sends it - guessing a backoff when
     the server has told you the answer just burns quota.
     """
     last_exc: Exception | None = None

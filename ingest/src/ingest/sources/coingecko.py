@@ -1,31 +1,13 @@
-"""CoinGecko source — crypto close/volume and market capitalisation.
+"""CoinGecko: crypto close/volume and market capitalisation.
 
-SCOPE IS DELIBERATELY NARROW, and this is the single most important thing to
-know about this module:
+The keyless API refuses historical ranges beyond 365 days (error_code 10012),
+and a Demo key raises rate limits without lifting that cap. It therefore
+cannot supply the 2-3 years of crypto history this project needs; yfinance
+does. CoinGecko is kept for market cap, a cross-check of recent closes, and
+the daily refresh.
 
-    The keyless CoinGecko API refuses any historical range beyond 365 days:
-
-        HTTP 401
-        {"error":{"status":{"error_code":10012,
-          "error_message":"Your request exceeds the allowed time range.
-           Public API users are limited to querying historical data within
-           the past 365 days..."}}}
-
-    A Demo key raises rate limits but does NOT lift this cap; full history is
-    a paid plan feature.
-
-So CoinGecko cannot supply the 2-3 years of crypto history the project
-requires. yfinance does (BTC-USD / ETH-USD / SOL-USD, full daily OHLCV), and
-is used for that. CoinGecko is retained for what it is genuinely better at and
-what Yahoo does not provide at all:
-
-  * market capitalisation
-  * an independent cross-check of recent closes
-  * the daily refresh path for crypto
-
-`/market_chart/range` returns daily granularity automatically for ranges over
-90 days. It has no open/high/low, so bars produced here carry close and volume
-only — which is why price_history allows NULL intraday bounds.
+`/market_chart/range` carries no open/high/low, so bars from here have close
+and volume only.
 """
 
 from __future__ import annotations
@@ -59,7 +41,7 @@ class CoinGeckoSource:
         """Return (bars, market_caps) for one coin.
 
         Clamps `start` into the free-tier window rather than letting the API
-        reject the whole request — a truncated series beats no series.
+        reject the whole request - a truncated series beats no series.
         """
         earliest = date.today() - timedelta(days=MAX_HISTORY_DAYS - 5)
         if start < earliest:
@@ -84,18 +66,12 @@ class CoinGeckoSource:
             )
             payload = resp.json()
 
-        # CoinGecko's granularity is range-dependent and NOT always daily:
-        #   1-2 days   -> ~5 minute points
-        #   3-90 days  -> hourly points
-        #   91+ days   -> daily points
-        # A 7-day refresh therefore returns ~168 hourly points, several per
-        # calendar date. Collapsing to one bar per date is mandatory - taking
-        # points as-is would store an arbitrary intraday price as the daily
-        # close, silently corrupting every downstream return.
-        #
-        # Last observation of each UTC date wins, which is the daily close.
-        # total_volumes is a rolling 24h figure, so last-of-day is correct
-        # there too rather than a sum.
+        # Granularity is range-dependent: <=2d gives 5-minute points, 3-90d
+        # hourly, 91d+ daily. A 7-day refresh returns ~168 hourly points, so
+        # collapsing to one bar per UTC date is mandatory - otherwise an
+        # arbitrary intraday price is stored as the daily close. Last
+        # observation wins; total_volumes is a rolling 24h figure, so
+        # last-of-day is right there too rather than a sum.
         def _last_per_date(series) -> dict:
             latest: dict = {}
             for ts, value in series or []:

@@ -1,12 +1,7 @@
-"""Loader for the hand-written analytics queries in db/queries/.
+"""Loader for the analytics queries in db/queries/.
 
-Queries live as .sql files rather than as Python string literals so that the
-exact text validated by the test suite is the exact text the endpoints
-execute. Embedding SQL in Python would let the tested query and the shipped
-query drift apart silently.
-
-Parameters use psycopg's named placeholders (%(name)s) throughout, so no
-value is ever interpolated into SQL text.
+Queries live on disk so the text the tests validate is the text the endpoints
+execute. All parameters use psycopg named placeholders.
 """
 
 from __future__ import annotations
@@ -18,7 +13,6 @@ from typing import Any, Sequence
 import psycopg
 from psycopg.rows import dict_row
 
-# api/src/app/sql.py -> repo root is four levels up.
 REPO_ROOT = Path(__file__).resolve().parents[3]
 QUERY_DIR = REPO_ROOT / "db" / "queries"
 

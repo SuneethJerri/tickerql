@@ -8,7 +8,7 @@ import { Legend, TooltipCard } from "./ChartTooltip";
 /** Sector comparison, indexed to 100 at the window start.
  *
  * Indexing is what makes one y-axis correct here. Sector levels are not
- * comparable in raw units, and the alternative — a second y-scale — invents a
+ * comparable in raw units, and the alternative - a second y-scale - invents a
  * relationship the data does not contain. Five categorical series pass the
  * adjacent-pair gates; the contrast WARN is answered by the direct end-labels
  * plus the table view below the chart.
@@ -95,7 +95,7 @@ export function SectorIndexChart({ data, mode }: { data: SectorIndexPoint[]; mod
   );
 }
 
-/** Direct label on the final point only — labels work because they are sparing. */
+/** Direct label on the final point only - labels work because they are sparing. */
 function EndLabel(props: any) {
   const { index, total, x, y, text, color } = props;
   if (index !== total - 1) return null;

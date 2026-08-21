@@ -142,7 +142,7 @@ class QueryAttempt(BaseModel):
     """One candidate SQL string and its fate.
 
     Surfaced so a user can see what was tried and, when the guard intervened,
-    that it did — the security boundary is a feature, not an implementation
+    that it did - the security boundary is a feature, not an implementation
     detail to hide.
     """
 

@@ -1,4 +1,4 @@
-"""Tiingo OHLCV source — fallback provider.
+"""Tiingo OHLCV source - fallback provider.
 
 Unused while yfinance works. Kept wired up because Yahoo blocking is a live
 risk (it 429s plain HTTP clients from this network) and swapping providers

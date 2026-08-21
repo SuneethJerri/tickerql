@@ -1,30 +1,17 @@
 /**
- * Chart palette — validated, not chosen by eye.
+ * Chart palette, validated rather than chosen by eye.
  *
- * Every set below was run through the dataviz skill's validator
- * (`validate_palette.js`) in both light and dark mode before being used. The
- * results that shaped this file:
+ * Five categorical slots pass the adjacent pairlist (lines, bars) but hard-fail
+ * all-pairs (scatter): magenta vs orange is dE 12.9, under the 15 floor. No
+ * five-hue subset of 56 passes all-pairs in both modes, and only 2 of 70
+ * four-hue subsets do. The risk/return scatter therefore uses two hues
+ * (stock vs crypto) plus a direct label on every point.
  *
- *   - 5 categorical slots PASS on the *adjacent* pairlist (lines, bars), with a
- *     contrast WARN that obliges visible labels or a table view. Sector lines
- *     therefore carry direct end-labels.
- *   - 5 slots HARD FAIL on the *all-pairs* pairlist (scatter): magenta vs
- *     orange measures ΔE 12.9 normal-vision, below the 15 floor, which
- *     secondary encoding does not excuse.
- *   - A search of all 56 five-hue subsets found ZERO that pass all-pairs in
- *     both modes; of 70 four-hue subsets only 2 pass, neither a natural sector
- *     palette. So the risk/return scatter does not colour by sector at all —
- *     it uses two hues (stock vs crypto), which pass every check with room to
- *     spare, and carries a direct label on all 16 points.
- *
- * If you change a colour here, re-run the validator. Do not reason about it.
+ * Re-run the validator if you change a colour here.
  */
 
-/** Fixed sector → slot assignment.
- *
- * Colour follows the entity, never its rank: filtering or re-sorting must not
- * repaint the survivors. A reader who learned "Energy is orange" keeps that.
- */
+/** Fixed sector-to-slot assignment: colour follows the entity, not its rank,
+ *  so filtering or re-sorting never repaints the survivors. */
 export const SECTOR_ORDER = [
   "Technology",
   "Energy",
@@ -41,14 +28,14 @@ const CATEGORICAL = {
   dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181"],
 } as const;
 
-/** Two hues for the scatter — slots 1 and 2, all-pairs validated. */
+/** Two hues for the scatter - slots 1 and 2, all-pairs validated. */
 const ASSET_TYPE = {
   light: { stock: "#2a78d6", crypto: "#eb6834" },
   dark: { stock: "#3987e5", crypto: "#d95926" },
 } as const;
 
 /** Diverging pair for correlation: warm/cool poles, neutral gray midpoint.
- *  blue↔aqua was rejected upstream — two cool hues, midpoint doesn't read as
+ *  blue↔aqua was rejected upstream - two cool hues, midpoint doesn't read as
  *  "nothing". Correlation is inherently polar (-1..+1) so this is the right job. */
 const DIVERGING = {
   light: { negative: "#2a78d6", mid: "#f0efec", positive: "#e34948" },

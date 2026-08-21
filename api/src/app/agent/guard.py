@@ -1,24 +1,15 @@
-"""AST validation for model-generated SQL — defence layer 2.
+"""AST validation for model-generated SQL.
 
-Layer 1 is the database: `sqlproj_agent` holds SELECT on five relations and no
-write grant of any kind (db/003_roles.sql, proved by test_db_privileges.py).
-That is the actual security boundary and this module is not a substitute for
-it. What this adds is *early, legible* rejection: a clear error the model can
-correct from, rather than a privilege violation surfacing mid-transaction.
+The real boundary is the database (db/003_roles.sql): sqlproj_agent has no
+write grant. This layer adds early, legible rejection the model can correct
+from, using an allowlist rather than a denylist.
 
-The design rule here is allowlist, not denylist. A denylist of dangerous
-statements is a bet that you enumerated every one; an allowlist of "a single
-SELECT touching these five relations" is a bet that you enumerated what the
-feature needs, which is a much smaller and more checkable claim.
-
-One subtlety worth stating: checking the root node is NOT sufficient. PostgreSQL
-allows data-modifying CTEs -
+Checking the root node is not sufficient. A data-modifying CTE such as
 
     WITH evil AS (INSERT INTO market.assets VALUES (...) RETURNING *)
     SELECT * FROM evil
 
-which parses with a Select at the root. Every node is therefore inspected, not
-just the top one.
+parses with a Select at the root, so every node is inspected.
 """
 
 from __future__ import annotations

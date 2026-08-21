@@ -23,8 +23,8 @@ export function Loading({ height = 280 }: { height?: number }) {
 
 /** Surfaces the API's own message.
  *
- * The backend writes these for people — a 404 on an unknown ticker lists the
- * valid ones — so replacing it with "Something went wrong" throws away the
+ * The backend writes these for people - a 404 on an unknown ticker lists the
+ * valid ones - so replacing it with "Something went wrong" throws away the
  * most useful part of the response.
  */
 export function ErrorNotice({ error }: { error: unknown }) {

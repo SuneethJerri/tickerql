@@ -1,6 +1,6 @@
 /** Shared tooltip.
  *
- * Values wear text tokens, never the series colour — identity comes from the
+ * Values wear text tokens, never the series colour - identity comes from the
  * key beside the label. Colouring the number itself would drop contrast and
  * make the figure the weakest thing in the row.
  */

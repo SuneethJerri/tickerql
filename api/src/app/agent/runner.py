@@ -1,18 +1,10 @@
 """The text-to-SQL agent loop.
 
-Flow: question -> Claude proposes SQL via the `run_sql` tool -> the guard
-validates it -> the restricted role executes it -> rows go back to Claude ->
-Claude answers in prose.
+question -> model proposes SQL via the `run_sql` tool -> guard validates ->
+the restricted role executes -> rows go back -> model answers in prose.
 
-A manual loop rather than the SDK's beta `tool_runner`, for two reasons that
-matter here: a hard ceiling on model calls (a self-correcting agent with an
-unbounded loop is a billing incident waiting to happen), and an audit record of
-every candidate SQL string — accepted or rejected — which is the artifact you
-want when asking "what did the model try to run".
-
-Every tool invocation passes through `guard.validate` before it reaches a
-connection, and the connection it reaches belongs to a role with no write
-grants. Neither alone is the security story; both together are.
+A manual loop rather than the SDK's tool_runner, for a hard ceiling on model
+calls and an audit record of every candidate SQL string, accepted or rejected.
 """
 
 from __future__ import annotations
@@ -61,7 +53,7 @@ RUN_SQL_TOOL: dict[str, Any] = {
 
 
 class AgentUnavailable(RuntimeError):
-    """Raised when the agent cannot run — typically a missing API key."""
+    """Raised when the agent cannot run - typically a missing API key."""
 
 
 class AgentRefused(RuntimeError):
@@ -189,13 +181,8 @@ class SqlAgent:
             tools=[RUN_SQL_TOOL],
             messages=messages,
         )
-        # Opus 5 thinks by default; effort trades depth against latency and
-        # cost. medium is ample for single-table-join analytics SQL.
-        #
-        # Omitted entirely when effort is falsy. `output_config` is an
-        # Anthropic-specific field, and a Messages-compatible gateway may
-        # reject an unrecognised field rather than ignore it — so routing
-        # through one is a config change, not a code change.
+        # output_config is Anthropic-specific; a gateway may reject an
+        # unknown field, so a blank effort omits it entirely.
         if self._effort:
             kwargs["output_config"] = {"effort": self._effort}
         return self._client.create(**kwargs)

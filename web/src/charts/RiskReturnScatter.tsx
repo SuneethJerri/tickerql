@@ -15,8 +15,8 @@ import { Legend, TooltipCard } from "./ChartTooltip";
  * ΔE 12.9 normal-vision against a floor of 15), and a search of all 56 five-hue
  * subsets of the palette found none that pass in both modes.
  *
- * So identity comes from a direct label on every one of the 16 points — which
- * is stronger than colour anyway — and hue carries the one split that matters
+ * So identity comes from a direct label on every one of the 16 points - which
+ * is stronger than colour anyway - and hue carries the one split that matters
  * most in this data, equities vs crypto. Sector is in the tooltip and the table.
  */
 export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Mode }) {

@@ -1,4 +1,4 @@
-"""yfinance-backed OHLCV source — the verified primary provider.
+"""yfinance-backed OHLCV source - the verified primary provider.
 
 Serves both equities and crypto history. Crypto is here rather than on
 CoinGecko because CoinGecko's keyless API refuses any range beyond 365 days
@@ -116,5 +116,5 @@ class YFinanceSource:
             return ProbeResult(
                 self.name, True, f"{len(bars)} recent bars for AAPL", bars[-1]
             )
-        except Exception as exc:  # noqa: BLE001 — probe must never raise
+        except Exception as exc:  # noqa: BLE001 - probe must never raise
             return ProbeResult(self.name, False, f"{type(exc).__name__}: {exc}"[:200])

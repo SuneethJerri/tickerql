@@ -57,11 +57,8 @@ app.include_router(query.router)
 
 
 # ---------------------------------------------------------------------------
-# Error handling
-#
-# Database errors must not reach the client verbatim: the text of a failed
-# statement can disclose schema details, and for the agent endpoint it would
-# echo model-generated SQL straight back out. Log the detail, return a shape.
+# Error handling. Database errors are logged, never returned verbatim: the text
+# of a failed statement discloses schema, and would echo model-generated SQL.
 # ---------------------------------------------------------------------------
 
 @app.exception_handler(psycopg.errors.QueryCanceled)

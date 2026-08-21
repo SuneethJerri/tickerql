@@ -1,4 +1,4 @@
-"""Alpha Vantage OHLCV source — second fallback provider.
+"""Alpha Vantage OHLCV source - second fallback provider.
 
 Free tier is 25 requests/day, which is enough for a one-time backfill of 13
 equities and a daily refresh, but not enough to retry casually. Wired up but

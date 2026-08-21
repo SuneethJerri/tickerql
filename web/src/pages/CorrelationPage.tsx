@@ -14,8 +14,8 @@ export function CorrelationPage({ mode }: { mode: Mode }) {
   const assets = useQuery({ queryKey: ["assets"], queryFn: api.assets });
 
   // Order the axes by sector, not alphabetically. A correlation matrix earns
-  // its keep by showing block structure — the crypto cluster, the energy
-  // cluster — and alphabetical order scatters those blocks across the grid so
+  // its keep by showing block structure - the crypto cluster, the energy
+  // cluster - and alphabetical order scatters those blocks across the grid so
   // the reader has to hunt for what the chart exists to show.
   const ordered = useMemo(() => {
     if (!matrix.data) return null;

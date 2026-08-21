@@ -4,7 +4,7 @@ import { useState, type ReactNode } from "react";
  *
  * Required, not optional: three of the five light-mode categorical slots sit
  * below 3:1 against the surface, and the validator's contrast WARN obliges
- * relief — visible labels or a table view. It is also the honest fallback for
+ * relief - visible labels or a table view. It is also the honest fallback for
  * anyone who cannot use the chart at all.
  */
 export function TableView({

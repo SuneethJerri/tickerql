@@ -1,11 +1,8 @@
 """Pluggable market-data sources.
 
-The `PriceSource` protocol exists because Yahoo returned HTTP 429 to plain
-HTTP clients from this network during initial probing. yfinance itself works
-(it uses curl_cffi with Chrome TLS impersonation), but a single hard-coded
-provider was an unacceptable single point of failure for the whole pipeline.
-Adding a provider means adding a module here, not adding conditionals at call
-sites.
+Yahoo returns 429 to plain HTTP clients from some networks; yfinance works
+because it uses curl_cffi TLS impersonation. Adding a provider means adding a
+module here, not conditionals at call sites.
 """
 
 from __future__ import annotations
@@ -53,7 +50,7 @@ class PriceSource(Protocol):
     ) -> dict[str, list[Bar]]:
         """Return bars per symbol for [start, end].
 
-        Implementations must not raise for a single bad symbol — omit it from
+        Implementations must not raise for a single bad symbol - omit it from
         the returned mapping and let the caller record the gap. Raising is
         reserved for total failure (auth, network, rate limit exhaustion).
         """
@@ -65,8 +62,7 @@ class PriceSource(Protocol):
 
 
 def get_source(name: str, settings) -> PriceSource:
-    """Resolve a source by name. Imports lazily so an unused provider's
-    dependencies never have to be installed."""
+    """Resolve a source by name, importing lazily."""
     key = name.strip().lower()
     if key == "yfinance":
         from ingest.sources.yfinance_source import YFinanceSource

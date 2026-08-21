@@ -8,7 +8,7 @@ import { divergingColor, inkOn, type Mode } from "./palette";
  * the job diverging colour exists for: two hues that read as opposite, and a
  * NEUTRAL GRAY midpoint so "uncorrelated" reads as nothing rather than as a
  * third category. A sequential ramp here would imply -1 and +1 are opposite
- * ends of one magnitude, which is wrong — they are equally strong, oppositely
+ * ends of one magnitude, which is wrong - they are equally strong, oppositely
  * signed.
  *
  * Built with CSS grid rather than Recharts: a matrix of labelled cells is a

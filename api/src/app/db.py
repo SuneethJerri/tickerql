@@ -1,13 +1,10 @@
 """Connection pools.
 
-Endpoints are declared with `def`, not `async def`, so FastAPI runs them in its
-threadpool. That lets us use synchronous psycopg without blocking the event
-loop, and avoids maintaining an async and a sync path over the same queries.
-For this workload - short, indexed reads against materialized views - the
-threadpool is not the bottleneck.
+Endpoints are sync `def`, so FastAPI runs them in its threadpool and psycopg
+does not block the event loop.
 
-Two pools with different credentials. The agent pool is the only one that ever
-executes model-generated SQL.
+Two pools, different credentials. The agent pool is the only one that executes
+model-generated SQL.
 """
 
 from __future__ import annotations
@@ -35,8 +32,8 @@ def open_pools(settings: Settings) -> None:
         max_size=settings.api_pool_max_size,
         open=True,
         name="api",
-        # Neon free-tier compute autosuspends; a stale pooled connection would
-        # otherwise surface as a spurious first-request failure.
+        # Neon autosuspends; without this a stale connection fails the
+        # first request after an idle period.
         check=ConnectionPool.check_connection,
     )
     _agent_pool = ConnectionPool(
@@ -73,11 +70,7 @@ def api_connection() -> Iterator[psycopg.Connection]:
 
 @contextmanager
 def agent_connection() -> Iterator[psycopg.Connection]:
-    """The restricted connection used exclusively for model-generated SQL.
-
-    Never use this for application queries: doing so would blur the boundary
-    that makes the agent's reach auditable.
-    """
+    """The restricted connection for model-generated SQL. Nothing else."""
     if _agent_pool is None:
         raise RuntimeError("connection pools are not open")
     with _agent_pool.connection() as conn:

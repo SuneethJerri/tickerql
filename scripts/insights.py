@@ -51,7 +51,7 @@ def worst_paid_risk(perf: dict, exclude: set[str] = frozenset()) -> tuple[dict, 
     sector also returned *less*. Returns (riskier, safer, vol_ratio).
 
     This is the "2x the volatility for no extra reward" claim, found rather
-    than assumed. Returns the empty tuple's stand-in if no such pair exists —
+    than assumed. Returns the empty tuple's stand-in if no such pair exists -
     which would itself be worth knowing, since it would mean risk was paid for
     everywhere in the window.
     """

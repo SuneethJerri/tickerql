@@ -206,7 +206,7 @@ def refresh(
             conn.commit()
 
             # CoinGecko pass: market capitalisation, which no other configured
-            # source provides. Best-effort — a failure here must not fail the
+            # source provides. Best-effort - a failure here must not fail the
             # price refresh.
             if not skip_market_cap:
                 cg = CoinGeckoSource(settings.coingecko_api_key)
