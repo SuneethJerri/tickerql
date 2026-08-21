@@ -1,0 +1,37 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm ci",
+
+  "//": [
+    "Set the Vercel project's Root Directory to `web`.",
+    "",
+    "VITE_API_BASE must be set in the Vercel dashboard to the deployed API",
+    "origin (e.g. https://sqlproj-api.onrender.com). Vite inlines VITE_* at",
+    "BUILD time, not at runtime, so changing it requires a redeploy - setting",
+    "it after the fact and expecting the live site to pick it up will not work.",
+    "",
+    "No SPA catch-all rewrite here on purpose: the app has no client-side",
+    "router (App.tsx switches tabs with useState), so every real page is `/`.",
+    "A catch-all would turn genuine 404s into a silently blank index.html."
+  ],
+
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ]
+}

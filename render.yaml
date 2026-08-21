@@ -1,0 +1,59 @@
+# Render Blueprint for the analytics API.
+#
+# Apply with: Render dashboard -> New -> Blueprint -> point at this repo.
+# Values marked `sync: false` are deliberately NOT in this file: they are
+# secrets, and this file is public. Render prompts for each one on first apply.
+#
+# See docs/DEPLOY.md for the ordered runbook.
+
+services:
+  - type: web
+    name: sqlproj-api
+    runtime: docker
+
+    # Build context is the repository root, not api/. app/sql.py loads the
+    # analytics queries from db/queries/ at runtime, so the image needs both
+    # directories at their repo-relative paths. See the note in api/Dockerfile.
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: .
+
+    plan: free
+    region: oregon        # keep in the same region as the Neon project
+    autoDeploy: true
+
+    # Returns 200 with {"status": "degraded"} when the database is reachable
+    # but the price data is stale. That is intentional: stale data is an
+    # ingestion problem, and a non-2xx here would make Render restart-loop a
+    # perfectly healthy API. Watch the `status` field, not just the HTTP code.
+    healthCheckPath: /api/health
+
+    envVars:
+      # --- secrets: entered in the Render dashboard, never committed ---------
+      - key: DATABASE_URL_API
+        sync: false       # Neon POOLED endpoint, role sqlproj_api
+      - key: DATABASE_URL_AGENT
+        sync: false       # Neon POOLED endpoint, role sqlproj_agent
+      - key: ANTHROPIC_API_KEY
+        sync: false       # omit entirely to leave /api/query returning 503
+      - key: CORS_ORIGINS
+        sync: false       # e.g. https://<project>.vercel.app
+
+      # --- non-secret configuration ----------------------------------------
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-5
+
+      # Pool ceilings, sized against two upstream limits rather than guessed:
+      #   * Neon's free tier caps concurrent connections, and both pools plus
+      #     any ingestion run share that budget.
+      #   * 003_roles.sql sets CONNECTION LIMIT 5 on sqlproj_agent, so the
+      #     agent pool must stay strictly below 5 or a burst of questions
+      #     produces connection errors instead of answers.
+      # The Dockerfile runs a single uvicorn worker for the same reason: with
+      # N workers these ceilings multiply by N.
+      - key: API_POOL_MAX_SIZE
+        value: "4"
+      - key: AGENT_POOL_MAX_SIZE
+        value: "3"
+
+      - key: PYTHONUNBUFFERED
+        value: "1"
