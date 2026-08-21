@@ -1074,3 +1074,53 @@ with a `!.env.example` exception, verified against six variants plus both
 committed templates. *Lesson:* an ignore rule that lists the files that exist
 today is a rule that fails the first time someone adds a file — and the failure
 is silent and unrecoverable once pushed.
+
+---
+
+## Neon provisioning
+
+The database is live on Neon (PostgreSQL 18.6, `ap-southeast-1`), migrated and
+backfilled from this machine as a non-superuser owner.
+
+### Mistakes
+
+**M-38 · A credential-masking function that printed the credential.** The
+`.env.neon` validator masked passwords by parsing the URL with `urlsplit` and
+reformatting it. The pasted values were shell-quoted, so `urlsplit` failed,
+returned `hostname=None`, and the fallback printed the **raw string** — the
+live Neon password, in full, to the terminal. A masking routine whose failure
+mode is "print the unmasked value" is worse than no masking, because it is
+trusted. *Fix:* parse first, and refuse to print anything at all when parsing
+fails. *Cost:* one credential exposed in a session transcript; rotation offered.
+
+**M-39 · The same run produced a vacuous PASS on the check that mattered.**
+With `urlsplit` failing, `hostname` was `None`, so the assertion
+`"-pooler" not in (hostname or "")` evaluated `"-pooler" not in ""` → **True**,
+and the direct-URL check reported PASS while the URL was in fact pooled. The
+check could not fail for the input it was given. *Fix:* an explicit
+precondition — assert both URLs parsed to a real host **before** asserting
+anything about those hosts. *Lesson:* this is the fourth instance of the same
+defect in this project (M-17, M-33, M-34, M-39). The common thread is a check
+written against a value that can be empty, where empty passes.
+
+**M-40 · Stripped quotes that shell `source` requires.** The repair script
+unquoted the URL values. Neon connection strings contain
+`?sslmode=require&channel_binding=require`; unquoted, `source` reads the `&` as
+job control and splits the line, so `DATABASE_URL` silently never got exported
+and the next command failed with `KeyError`. *Fix:* quote every value on write.
+*Lesson:* a dotenv file consumed by both `source` and a dotenv parser has to
+satisfy the stricter of the two, and the shell is stricter.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| Endpoints distinguished empirically | `inet_server_addr()` differs — `169.254.254.254` direct vs `::1` behind pgbouncer |
+| `ingest migrate` | All four migrations applied in 2.4s as `neondb_owner`, `superuser=False` |
+| `ingest backfill --years 3` | 16/16 assets, 13,064 rows, 20.3s |
+| `refresh-views` | All three materialized views rebuilt |
+| Coverage | 1096 bars/crypto, 752/equity |
+| **Privilege suite against Neon** | **33/33 passed** on the direct endpoint |
+| Analytics queries against Neon | 22/22 passed |
+| `sqlproj_api` via **pooled** endpoint | Connects and returns all five sectors in 1.2s |
+| `sqlproj_agent` via **pooled** endpoint | SELECT works; INSERT and UPDATE blocked; `ingest_runs` unreadable |
