@@ -39,23 +39,28 @@ services:
         sync: false       # e.g. https://<project>.vercel.app
 
       # --- non-secret configuration ----------------------------------------
+      # Configured for OpenRouter. For the direct Anthropic API instead: model
+      # claude-opus-5, no ANTHROPIC_BASE_URL, auth style api_key, effort medium.
       - key: ANTHROPIC_MODEL
-        value: claude-opus-5
+        value: meta-llama/llama-3.3-70b-instruct
 
-      # Optional gateway (e.g. OpenRouter). Leave both unset for the direct
-      # Anthropic API. For OpenRouter set ANTHROPIC_BASE_URL to
-      # https://openrouter.ai/api (no /v1 — the SDK appends it),
-      # ANTHROPIC_AUTH_STYLE to "bearer", and ANTHROPIC_MODEL to
-      # anthropic/claude-opus-5. See docs/DEPLOY.md.
+      # No trailing /v1: the SDK appends /v1/messages itself.
       - key: ANTHROPIC_BASE_URL
-        sync: false
-      - key: ANTHROPIC_AUTH_STYLE
-        value: api_key
+        value: https://openrouter.ai/api
 
-      # Thinking depth. Blank omits Anthropic's `output_config` entirely, which
-      # some gateways require.
+      # OpenRouter authenticates with Authorization: Bearer, not x-api-key.
+      - key: ANTHROPIC_AUTH_STYLE
+        value: bearer
+
+      # output_config is Anthropic-specific; blank omits it for gateways that
+      # reject an unknown field rather than ignoring it.
       - key: AGENT_EFFORT
-        value: medium
+        value: ""
+
+      # OpenRouter returns HTTP 402 when max_tokens exceeds what the account
+      # balance can cover, so this is deliberately modest.
+      - key: AGENT_MAX_TOKENS
+        value: "4000"
 
       # Pool ceilings, sized against two upstream limits rather than guessed:
       #   * Neon's free tier caps concurrent connections, and both pools plus
