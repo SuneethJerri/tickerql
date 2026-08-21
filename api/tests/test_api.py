@@ -43,6 +43,7 @@ def test_openapi_documents_every_endpoint(client) -> None:
         "/api/analytics/volatility", "/api/analytics/risk-return",
         "/api/analytics/correlation", "/api/analytics/periods",
         "/api/analytics/moving-averages/{ticker}",
+        "/api/analytics/sparklines",
     }
     assert expected <= set(paths)
 
@@ -266,3 +267,44 @@ def test_moving_averages_flag_partial_points(client) -> None:
     partial = [p for p in body["points"] if p["is_partial"]]
     assert partial, "expected a ramp-up region"
     assert all(p["bars_used"] < 200 for p in partial)
+
+
+# ---------------------------------------------------------------------------
+# Sparklines - a bulk, downsampled series feed
+# ---------------------------------------------------------------------------
+
+def test_sparklines_cover_every_asset(client, universe) -> None:
+    rows = client.get("/api/analytics/sparklines?window=365").json()
+    assert len(rows) == universe["count"], (
+        "the risk table draws one sparkline per row, so a missing series is a blank cell"
+    )
+
+
+def test_sparklines_are_downsampled_to_weeks_not_days(client) -> None:
+    """The point of the endpoint. A daily series would be ~250 points per asset
+    and ~34,000 on the wire, to draw marks about 90 px wide."""
+    rows = client.get("/api/analytics/sparklines?window=365").json()
+    counts = [len(r["closes"]) for r in rows]
+    assert max(counts) <= 60, f"more than a year of weeks: {max(counts)}"
+    # A year is ~52 weeks; anything far below that would mean the bucketing
+    # collapsed the series rather than downsampling it.
+    assert max(counts) >= 45, f"too few points to be weekly: {max(counts)}"
+
+
+def test_sparkline_span_matches_the_series(client) -> None:
+    row = next(r for r in client.get("/api/analytics/sparklines?window=90").json())
+    assert row["start_date"] < row["end_date"]
+    assert len(row["closes"]) >= 8, "a 90-day window should be ~13 weekly points"
+    assert all(c > 0 for c in row["closes"]), "a non-positive close is bad data"
+
+
+def test_sparkline_window_narrows_the_series(client) -> None:
+    """Guards the window parameter actually reaching the query - a filter that
+    is ignored returns a plausible-looking series that is simply the wrong one."""
+    year = {r["ticker"]: len(r["closes"]) for r in
+            client.get("/api/analytics/sparklines?window=365").json()}
+    quarter = {r["ticker"]: len(r["closes"]) for r in
+               client.get("/api/analytics/sparklines?window=90").json()}
+    shared = set(year) & set(quarter)
+    assert shared
+    assert all(quarter[t] < year[t] for t in shared)

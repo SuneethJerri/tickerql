@@ -1,29 +1,31 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, fmtPct, type SectorPerformance } from "../api";
 import { SectorIndexChart } from "../charts/SectorIndexChart";
 import { PriceMaChart } from "../charts/PriceMaChart";
 import type { ChartBase } from "../charts/palette";
 import { StatTile } from "../components/StatTile";
-import { TableView } from "../components/TableView";
-import { Card, ErrorNotice, Loading, WindowPicker } from "../components/ui";
+import { TableView, type Column } from "../components/TableView";
+import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { useUrlNumber, useUrlString } from "../urlState";
 
 export function Dashboard({ mode }: { mode: ChartBase }) {
-  const [window, setWindow] = useState(365);
-  const [ticker, setTicker] = useState("AAPL");
+  // "replace", not "push": these refine the current view, and flicking through
+  // 30d/90d/365d should not bury the previous tab under three history entries.
+  const [windowDays, setWindow] = useUrlNumber("window", METRIC_WINDOWS, 365, "replace");
+  const [ticker, setTicker] = useUrlString("ticker", "AAPL", "replace");
 
   const assets = useQuery({ queryKey: ["assets"], queryFn: api.assets });
   const perf = useQuery({
-    queryKey: ["sector-performance", window],
-    queryFn: () => api.sectorPerformance(window),
+    queryKey: ["sector-performance", windowDays],
+    queryFn: () => api.sectorPerformance(windowDays),
   });
   const index = useQuery({
-    queryKey: ["sector-index", window],
-    queryFn: () => api.sectorIndex(window),
+    queryKey: ["sector-index", windowDays],
+    queryFn: () => api.sectorIndex(windowDays),
   });
   const ma = useQuery({
-    queryKey: ["ma", ticker, window],
-    queryFn: () => api.movingAverages(ticker, [20, 50, 200], window),
+    queryKey: ["ma", ticker, windowDays],
+    queryFn: () => api.movingAverages(ticker, [20, 50, 200], windowDays),
   });
 
   const ranked = [...(perf.data ?? [])].sort(
@@ -38,7 +40,7 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
   return (
     <>
       <div className="controls">
-        <WindowPicker value={window} onChange={setWindow} />
+        <WindowPicker value={windowDays} onChange={setWindow} />
         <span className="control">
           Asset
           <select value={ticker} onChange={(e) => setTicker(e.target.value)}>
@@ -80,7 +82,7 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
           {index.isPending ? <Loading /> : index.error ? <ErrorNotice error={index.error} /> : (
             <>
               <SectorIndexChart data={index.data!} mode={mode} />
-              <SectorTable rows={perf.data ?? []} />
+              <SectorTable rows={perf.data ?? []} windowDays={windowDays} />
             </>
           )}
         </Card>
@@ -98,7 +100,32 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
   );
 }
 
-function SectorTable({ rows }: { rows: SectorPerformance[] }) {
+const SECTOR_COLUMNS: Column<SectorPerformance>[] = [
+  { header: "Sector", value: (r) => r.sector, align: "left" },
+  { header: "Assets", value: (r) => r.asset_count },
+  // The CSV carries the raw fraction; the table carries the formatted percent.
+  // Exporting "57.7%" would force whoever opens it to strip the sign before
+  // they could do arithmetic with it.
+  { header: "Return", value: (r) => r.total_return, cell: (r) => fmtPct(r.total_return) },
+  {
+    header: "Volatility",
+    value: (r) => r.annualized_volatility,
+    cell: (r) => fmtPct(r.annualized_volatility),
+  },
+  {
+    header: "Return / risk",
+    value: (r) => r.return_per_unit_risk,
+    cell: (r) => r.return_per_unit_risk?.toFixed(2) ?? "—",
+  },
+  { header: "Days", value: (r) => r.observations },
+];
+
+function SectorTable({
+  rows, windowDays,
+}: {
+  rows: SectorPerformance[];
+  windowDays: number;
+}) {
   // Ranked by return rather than by a fixed sector order. The swatch is gone
   // with it: the panels above all wear one hue, so a coloured dot here would
   // claim a sector-to-colour mapping that no longer exists.
@@ -108,15 +135,9 @@ function SectorTable({ rows }: { rows: SectorPerformance[] }) {
   return (
     <TableView
       label="sector table"
-      columns={["Sector", "Assets", "Return", "Volatility", "Return / risk", "Days"]}
-      rows={ordered.map((r) => [
-        r.sector,
-        r.asset_count,
-        fmtPct(r.total_return),
-        fmtPct(r.annualized_volatility),
-        r.return_per_unit_risk?.toFixed(2) ?? "—",
-        r.observations,
-      ])}
+      filename={`tickerql-sectors-${windowDays}d`}
+      columns={SECTOR_COLUMNS}
+      data={ordered}
     />
   );
 }

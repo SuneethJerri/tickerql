@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api, type QueryResponse, type StreamEvent, type Turn } from "../api";
+import { downloadCsv, type CsvCell } from "../csv";
 import { Markdown } from "../components/Markdown";
 import { Card } from "../components/ui";
 
@@ -303,6 +304,21 @@ function Answer({ result, events }: { result: QueryResponse; events: StreamEvent
 
       {result.columns.length > 0 && (
         <div className="md-table-wrap">
+          {/* The export carries every row the API returned, not the 50 shown -
+              the display cap exists so the answer is not buried, and silently
+              exporting the truncated view would be the wrong kind of helpful. */}
+          <button
+            className="table-toggle"
+            onClick={() =>
+              downloadCsv(
+                `tickerql-answer-${new Date().toISOString().slice(0, 10)}`,
+                result.columns,
+                result.rows as CsvCell[][],
+              )
+            }
+          >
+            Download CSV ({result.row_count} row{result.row_count === 1 ? "" : "s"})
+          </button>
           <table className="data">
             <thead>
               <tr>{result.columns.map((c) => <th key={c} scope="col">{c}</th>)}</tr>

@@ -27,6 +27,7 @@ from app.models import (
     PriceSeries,
     SectorIndexPoint,
     SectorPerformanceOut,
+    SparklineSeries,
 )
 
 log = logging.getLogger(__name__)
@@ -167,6 +168,30 @@ def risk_return(window: int = Query(365, description="30, 90 or 365.")) -> list[
     with api_connection() as conn:
         rows = sql.fetch_all(conn, "asset_risk_metrics", {"window_days": window})
     return [AssetRiskMetricOut(**r) for r in rows]
+
+
+@router.get("/analytics/sparklines", response_model=list[SparklineSeries])
+def sparklines(window: WindowDays = 365) -> list[SparklineSeries]:
+    """Weekly close series for every asset, for the shape column in the risk table.
+
+    One request rather than 135: the table shows every asset at once, so
+    per-ticker fetching would mean 135 round trips to draw one column.
+    """
+    with api_connection() as conn:
+        rows = sql.fetch_all(conn, "sparklines", {"window_days": window})
+
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(row["ticker"], []).append(row)
+    return [
+        SparklineSeries(
+            ticker=ticker,
+            start_date=points[0]["date"],
+            end_date=points[-1]["date"],
+            closes=[float(p["close"]) for p in points],
+        )
+        for ticker, points in grouped.items()
+    ]
 
 
 # ---------------------------------------------------------------------------

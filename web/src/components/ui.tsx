@@ -54,6 +54,18 @@ const WINDOWS = [
   { value: 365, label: "1y" },
 ];
 
+export const CORRELATION_WINDOW_OPTIONS = [
+  { value: 90, label: "90d" },
+  { value: 365, label: "1y" },
+  { value: 1095, label: "3y" },
+];
+
+/** The windows `market.asset_metrics` is materialized for. Exported so the URL
+ *  reader and the picker cannot disagree about what is selectable - a `window`
+ *  param the picker cannot show would leave the control lying about the view. */
+export const METRIC_WINDOWS = WINDOWS.map((w) => w.value);
+export const CORRELATION_WINDOWS = CORRELATION_WINDOW_OPTIONS.map((w) => w.value);
+
 /** Filters live in one row above the charts. */
 export function WindowPicker({
   value, onChange, options = WINDOWS,

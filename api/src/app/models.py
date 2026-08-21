@@ -90,6 +90,20 @@ class AssetRiskMetricOut(BaseModel):
     volatility_rank: int
 
 
+class SparklineSeries(BaseModel):
+    """One asset's price shape, downsampled to weekly closes.
+
+    Carries no per-point dates: a sparkline is shape over a stated span, and
+    135 assets x 52 points of ISO date strings is four times the payload of the
+    numbers they label. `start_date` and `end_date` say what the span is.
+    """
+
+    ticker: str
+    start_date: date
+    end_date: date
+    closes: list[float]
+
+
 class CorrelationCell(BaseModel):
     ticker_a: str
     ticker_b: str

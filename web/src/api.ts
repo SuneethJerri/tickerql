@@ -69,6 +69,14 @@ export interface RiskMetric {
   volatility_rank: number;
 }
 
+export interface SparklineSeries {
+  ticker: string;
+  start_date: string;
+  end_date: string;
+  /** Weekly closes. No per-point dates: a sparkline is shape over a stated span. */
+  closes: number[];
+}
+
 export interface CorrelationCell {
   ticker_a: string;
   ticker_b: string;
@@ -197,6 +205,8 @@ export const api = {
     request<SectorIndexPoint[]>(`/api/analytics/sector-index?window=${window}`),
   riskReturn: (window: number) =>
     request<RiskMetric[]>(`/api/analytics/risk-return?window=${window}`),
+  sparklines: (window: number) =>
+    request<SparklineSeries[]>(`/api/analytics/sparklines?window=${window}`),
   volatility: (window: number) =>
     request<RiskMetric[]>(`/api/analytics/volatility?window=${window}`),
   correlation: (window: number, tickers?: string[]) =>

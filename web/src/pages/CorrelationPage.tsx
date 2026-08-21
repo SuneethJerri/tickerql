@@ -1,9 +1,14 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { CorrelationHeatmap, type HeatValue } from "../charts/CorrelationHeatmap";
 import type { ChartBase } from "../charts/palette";
-import { Card, ErrorNotice, Loading, WindowPicker } from "../components/ui";
+import { downloadCsv } from "../csv";
+import {
+  Card, ErrorNotice, Loading, WindowPicker,
+  CORRELATION_WINDOWS, CORRELATION_WINDOW_OPTIONS,
+} from "../components/ui";
+import { setUrlParams, useUrlNumber, useUrlOptional } from "../urlState";
 
 /** Correlation, sector-first.
  *
@@ -18,12 +23,24 @@ import { Card, ErrorNotice, Loading, WindowPicker } from "../components/ui";
  * groups move together", which is the question the grid is being read for.
  */
 export function CorrelationPage({ mode }: { mode: ChartBase }) {
-  const [window, setWindow] = useState(365);
-  const [drill, setDrill] = useState<[string, string] | null>(null);
+  const [windowDays, setWindow] = useUrlNumber(
+    "window", CORRELATION_WINDOWS, 365, "replace",
+  );
+  // The drill-down is two params rather than one joined string: sector names
+  // contain both spaces and colons ("India: Energy"), so any separator worth
+  // picking is already inside the data.
+  const drillA = useUrlOptional("sa");
+  const drillB = useUrlOptional("sb");
+  const drill: [string, string] | null = drillA && drillB ? [drillA, drillB] : null;
+  // Pushed, not replaced: a drill-down is a change of view, and `back` should
+  // return to the sector matrix. Both params move in one entry so `back` can
+  // never land on a half-applied state the reader never saw.
+  const setDrill = (next: [string, string] | null) =>
+    setUrlParams(next ? { sa: next[0], sb: next[1] } : { sa: null, sb: null });
 
   const matrix = useQuery({
-    queryKey: ["correlation", window],
-    queryFn: () => api.correlation(window),
+    queryKey: ["correlation", windowDays],
+    queryFn: () => api.correlation(windowDays),
   });
   const assets = useQuery({ queryKey: ["assets"], queryFn: api.assets });
 
@@ -71,40 +88,61 @@ export function CorrelationPage({ mode }: { mode: ChartBase }) {
   }, [matrix.data, assets.data]);
 
   const drillLabels = useMemo(() => {
-    if (!model || !drill) return null;
-    const [a, b] = drill;
+    if (!model || !drillA || !drillB) return null;
     const tickers = new Set([
-      ...(model.tickersBySector.get(a) ?? []),
-      ...(model.tickersBySector.get(b) ?? []),
+      ...(model.tickersBySector.get(drillA) ?? []),
+      ...(model.tickersBySector.get(drillB) ?? []),
     ]);
-    return [...tickers].sort();
-  }, [model, drill]);
+    // A hand-typed ?sa=Nonsense selects nothing; fall back to the sector matrix
+    // rather than rendering an empty grid.
+    return tickers.size ? [...tickers].sort() : null;
+  }, [model, drillA, drillB]);
+
+  // The visible grid, long rather than wide: 361 sector cells or a ticker
+  // block, one row per pair, which is the shape a spreadsheet can pivot.
+  const exportPairs = () => {
+    if (!model) return;
+    const labels = drillLabels ?? model.sectors;
+    const at = drillLabels
+      ? (a: string, b: string) => model.pairs.get(`${a}|${b}`)
+      : (a: string, b: string) => model.sectorCells.get(`${a}|${b}`);
+    const rows = labels.flatMap((a) =>
+      labels.map((b) => [a, b, at(a, b)?.correlation ?? null, at(a, b)?.observations ?? 0]),
+    );
+    downloadCsv(
+      `tickerql-correlation-${drillLabels ? "assets" : "sectors"}-${windowDays}d`,
+      [drillLabels ? "ticker_a" : "sector_a", drillLabels ? "ticker_b" : "sector_b",
+       "correlation", drillLabels ? "shared_days" : "pairs"],
+      rows,
+    );
+  };
 
   return (
     <>
       <div className="controls">
-        <WindowPicker value={window} onChange={setWindow} options={[
-          { value: 90, label: "90d" },
-          { value: 365, label: "1y" },
-          { value: 1095, label: "3y" },
-        ]} />
-        {drill && (
+        <WindowPicker
+          value={windowDays} onChange={setWindow} options={CORRELATION_WINDOW_OPTIONS}
+        />
+        {drill && drillLabels && (
           <button className="chip" onClick={() => setDrill(null)}>
             ← All sectors
           </button>
         )}
+        <button className="chip" onClick={exportPairs} disabled={!model}>
+          Download CSV
+        </button>
       </div>
 
       <Card
         title={
-          drill
+          drill && drillLabels
             ? drill[0] === drill[1]
               ? `Correlation within ${drill[0]}`
               : `Correlation: ${drill[0]} vs ${drill[1]}`
             : "Correlation of daily returns, by sector"
         }
         subtitle={
-          drill
+          drill && drillLabels
             ? "Every asset in the selected sectors, pair by pair."
             : "Each cell is the mean correlation across every asset pair spanning the two sectors, with self-pairs excluded. Click a cell to see the assets behind it. Cross-asset pairs use only the days both assets traded — crypto trades weekends and equities do not, so padding would drag every crypto/equity pair toward zero."
         }
@@ -113,7 +151,7 @@ export function CorrelationPage({ mode }: { mode: ChartBase }) {
           <Loading height={420} />
         ) : matrix.error ? (
           <ErrorNotice error={matrix.error} />
-        ) : !model ? null : drill && drillLabels ? (
+        ) : !model ? null : drillLabels ? (
           <CorrelationHeatmap
             labels={drillLabels}
             cellAt={(a, b) => model.pairs.get(`${a}|${b}`)}

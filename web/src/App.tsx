@@ -1,24 +1,28 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 import { useTheme } from "./useTheme";
+import { useUrlEnum } from "./urlState";
 import { ACCENTS, ACCENT_NAMES, THEMES, THEME_NAMES, isThemeName } from "./theme";
 import { Dashboard } from "./pages/Dashboard";
 import { RiskPage } from "./pages/RiskPage";
 import { CorrelationPage } from "./pages/CorrelationPage";
+import { AssetPage } from "./pages/AssetPage";
 import { AskPage } from "./pages/AskPage";
 
-type Tab = "dashboard" | "risk" | "correlation" | "ask";
-
-const TABS: { id: Tab; label: string }[] = [
+const TABS = [
   { id: "dashboard", label: "Dashboard" },
   { id: "risk", label: "Risk vs return" },
   { id: "correlation", label: "Correlation" },
+  { id: "asset", label: "Asset" },
   { id: "ask", label: "Ask" },
-];
+] as const;
+
+type Tab = (typeof TABS)[number]["id"];
+
+const TAB_IDS = TABS.map((t) => t.id);
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setTab] = useUrlEnum<Tab>("tab", TAB_IDS, "dashboard");
   const { chartBase, accent, choice, setTheme, setAccent } = useTheme();
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 60_000 });
 
@@ -82,6 +86,7 @@ export default function App() {
         {tab === "dashboard" && <Dashboard mode={chartBase} />}
         {tab === "risk" && <RiskPage mode={chartBase} />}
         {tab === "correlation" && <CorrelationPage mode={chartBase} />}
+        {tab === "asset" && <AssetPage mode={chartBase} />}
         {tab === "ask" && <AskPage />}
       </main>
     </div>

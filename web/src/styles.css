@@ -370,6 +370,25 @@ select:focus-visible, input:focus-visible, textarea:focus-visible, button:focus-
 .tooltip .tt-val { font-variant-numeric: tabular-nums; }
 
 /* ---------- table view (the accessibility fallback) ---------- */
+.table-actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4);
+  margin-top: var(--space-1);
+}
+.table-toggle:disabled { opacity: 0.5; cursor: not-allowed; text-decoration: none; }
+table.data td.align-left, table.data th.align-left { text-align: left; }
+.sparkline { display: block; overflow: visible; }
+/* The shape column is a mark, not a number, so it does not want the tabular
+   right-alignment every other data cell has. */
+table.data td:has(> .sparkline) { text-align: center; padding-top: 2px; padding-bottom: 2px; }
+
+/* A control that reads as a link. It is a <button> because it changes the view
+   rather than navigating to a document, and a link that does not go anywhere
+   breaks middle-click and "copy link address". */
+.link {
+  background: none; border: none; padding: 0; font: inherit; cursor: pointer;
+  color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
+}
+.link:hover { color: var(--text-primary); }
 .table-toggle {
   background: none; border: none; cursor: pointer; font: inherit; font-size: var(--text-sm);
   color: var(--text-muted); padding: var(--space-1) 0; text-decoration: underline;

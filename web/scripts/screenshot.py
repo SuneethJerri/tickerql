@@ -6,7 +6,7 @@ palette validator checks colour, and every layout defect found so far (M-23
 through M-26) was a collision or an overflow it cannot see. This is what makes
 "I looked at all of them" reproducible instead of a claim.
 
-Three problems have to be solved to shoot this particular app, and each is
+Two problems have to be solved to shoot this particular app, and both are
 solved here rather than in the app:
 
 1. Firefox fires `load` before React Query resolves, so a naive --screenshot
@@ -16,13 +16,16 @@ solved here rather than in the app:
 2. The theme lives in localStorage, which a fresh profile does not have. A seed
    script is injected ahead of index.html's own pre-paint script, so the theme
    is stamped before first paint exactly as it would be for a returning user.
-3. Tabs are useState, not routes, so there is no URL to point at. The seed
-   script clicks the nav button by label once React has mounted. When tabs
-   become deep-linkable this collapses into a plain URL.
+
+There used to be a third: tabs lived in useState, so the seed script had to
+find the nav button by its label text and click it. Now that view state is in
+the URL, a tab is just `?tab=risk` and the clicking is gone - along with the
+race it carried, where a shot taken before React mounted silently captured the
+default tab. `--tabs` accepts either the ids or the old display labels.
 
 Usage:
     python3 web/scripts/screenshot.py --out /tmp/shots
-    python3 web/scripts/screenshot.py --themes dark --tabs Correlation --width 1440
+    python3 web/scripts/screenshot.py --themes dark --tabs correlation --width 1440
 
 Assumes `npx vite` on --upstream and the API on :8000 behind its proxy.
 """
@@ -43,7 +46,16 @@ import urllib.request
 from pathlib import Path
 
 THEMES = ["system", "light", "dark", "midnight", "graphite", "sepia"]
-TABS = ["Dashboard", "Risk vs return", "Correlation", "Ask"]
+TABS = ["dashboard", "risk", "correlation", "asset", "ask"]
+
+# The display labels the old --tabs took, so existing invocations keep working.
+TAB_ALIASES = {
+    "dashboard": "dashboard",
+    "risk vs return": "risk",
+    "correlation": "correlation",
+    "asset": "asset",
+    "ask": "ask",
+}
 
 SEED = """<script>
 (function () {
@@ -55,19 +67,32 @@ SEED = """<script>
     var a = q.get('__accent');
     if (a) localStorage.setItem('accent', a); else localStorage.removeItem('accent');
   } catch (e) {}
-  var tab = q.get('__tab');
-  var ask = q.get('__ask');
-  if ((!tab || tab === 'Dashboard') && !ask) return;
-  var tries = 0;
-  var timer = setInterval(function () {
-    var buttons = document.querySelectorAll('.nav button');
-    for (var i = 0; i < buttons.length; i++) {
-      if (buttons[i].textContent.trim() === (tab || 'Dashboard')) {
-        buttons[i].click();
-        clearInterval(timer);
-        if (ask) setTimeout(function () { submitQuestion(ask); }, 60);
+  // Anything that is not view state still has to be driven from here. A
+  // collapsed table is the main one: it is local component state by design, and
+  // a table nobody can screenshot is a table nobody checks.
+  var click = q.get('__click');
+  if (click) {
+    var clickTries = 0;
+    var clickTimer = setInterval(function () {
+      var targets = document.querySelectorAll(click);
+      if (targets.length) {
+        clearInterval(clickTimer);
+        for (var n = 0; n < targets.length; n++) targets[n].click();
         return;
       }
+      if (++clickTries > 200) clearInterval(clickTimer);
+    }, 25);
+  }
+
+  // The Ask form is the other: typing a question is not view state either.
+  var ask = q.get('__ask');
+  if (!ask) return;
+  var tries = 0;
+  var timer = setInterval(function () {
+    if (document.querySelector('.ask-form textarea')) {
+      clearInterval(timer);
+      submitQuestion(ask);
+      return;
     }
     if (++tries > 200) clearInterval(timer);
   }, 25);
@@ -228,6 +253,10 @@ def main() -> int:
     parser.add_argument("--tabs", default=",".join(TABS))
     parser.add_argument("--accent", default="blue")
     parser.add_argument(
+        "--click",
+        help="CSS selector to click once it appears (e.g. '.table-toggle').",
+    )
+    parser.add_argument(
         "--ask",
         help="Type this question into the Ask form and submit it before shooting.",
     )
@@ -247,11 +276,14 @@ def main() -> int:
     try:
         for theme in args.themes.split(","):
             for tab in args.tabs.split(","):
-                params = {"__theme": theme, "__accent": args.accent, "__tab": tab}
-                if args.ask and tab == "Ask":
+                tab = TAB_ALIASES.get(tab.strip().lower(), tab.strip().lower())
+                params = {"__theme": theme, "__accent": args.accent, "tab": tab}
+                if args.click:
+                    params["__click"] = args.click
+                if args.ask and tab == "ask":
                     params["__ask"] = args.ask
                 query = urllib.parse.urlencode(params)
-                slug = tab.lower().replace(" ", "-")
+                slug = tab
                 out = args.out / f"{theme}--{slug}.png"
                 url = f"http://127.0.0.1:{args.port}/?{query}"
                 # A fresh profile per shot would be correct but costs ~2s each;
