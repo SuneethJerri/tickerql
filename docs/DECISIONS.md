@@ -1064,3 +1064,13 @@ toggle, and note that the two strings differ only by `-pooler` in the hostname
 so either can be derived from the other by hand. *Lesson:* a runbook step that
 describes someone else's UI is a claim about the world with a shelf life, and
 this one was never checked against the product.
+
+**M-37 · `.gitignore` covered `.env` and `.env.local` but nothing else.** About
+to suggest a `.env.neon` holding live Neon credentials, I checked whether it
+would be ignored. It would not have been — nor would `.env.production`,
+`.env.prod`, or any other variant. The repo had gone 38 commits with a rule
+that only happened to cover the two filenames actually in use. *Fix:* `.env*`
+with a `!.env.example` exception, verified against six variants plus both
+committed templates. *Lesson:* an ignore rule that lists the files that exist
+today is a rule that fails the first time someone adds a file — and the failure
+is silent and unrecoverable once pushed.

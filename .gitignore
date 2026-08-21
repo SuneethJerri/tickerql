@@ -2,8 +2,11 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
-.env
-.env.local
+# Every dotenv variant is a secret, EXCEPT the committed templates.
+# Previously this listed only .env and .env.local, which left .env.neon,
+# .env.production and friends committable.
+.env*
+!.env.example
 *.egg-info/
 dist/
 build/
