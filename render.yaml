@@ -75,5 +75,19 @@ services:
       - key: AGENT_POOL_MAX_SIZE
         value: "3"
 
+      # /api/query calls a model on every request. The analytics endpoints are
+      # cheap indexed reads and are not capped. CORS is no protection here: it
+      # is a browser rule and curl ignores it.
+      - key: QUERY_RATE_LIMIT
+        value: "10"
+      - key: QUERY_RATE_WINDOW_SECONDS
+        value: "3600"
+
+      # Optional shared secret, sent as X-API-Key. Set it to close /api/query
+      # entirely. It cannot protect the public dashboard, which would have to
+      # ship the secret in its JS bundle.
+      - key: QUERY_API_KEY
+        sync: false
+
       - key: PYTHONUNBUFFERED
         value: "1"

@@ -1237,3 +1237,55 @@ hosting dashboard, so the same value is correct in two different forms
 depending on where it lives; normalising on load makes both work. The failure
 this prevents is badly signposted - libpq names the last query parameter, not
 the whitespace - which is exactly the kind of error worth engineering out.
+
+---
+
+## Protecting the one endpoint that costs money
+
+**D-89 · `/api/query` is rate limited per client; a shared secret is offered
+but is not the defence.** Every analytics endpoint is a cheap indexed read.
+`/api/query` calls a language model on each request, so an open one spends
+somebody else's budget, and CORS does not help - it is a browser rule that
+`curl` ignores. The asked-for fix was a shared-secret header. For a **public
+SPA that is not a control**: the browser must send the key, the bundle is
+public, and the secret ships with it. `QUERY_API_KEY` is implemented anyway
+because it genuinely closes the endpoint when the dashboard is not meant to
+reach it, but the default protection is a sliding-window limit of 10 questions
+per hour per client.
+
+**D-90 · The limiter is in-memory, which is sound only because the service runs
+one worker.** `api/Dockerfile` pins `--workers 1` so pool sizes stay under the
+agent role's `CONNECTION LIMIT 5`. That same constraint makes a process-local
+counter correct. Under multiple workers or replicas each process would keep its
+own window and the effective limit would multiply silently - the module says
+so, because the failure mode is a limit that looks enforced and is not.
+
+**D-91 · Blocked attempts are not recorded.** Appending to the window on a
+rejected call means a client that keeps retrying pushes its own reset further
+out and can starve indefinitely. A test pins this by hammering 49 times inside
+a closed window and asserting the window still opens on schedule.
+
+**D-92 · `X-Forwarded-For` is trusted, with the limitation stated.** It is
+client-controlled and spoofable, so one caller can present as many. The
+alternative - limiting on `request.client.host` - collapses every visitor
+behind Render's proxy into one bucket and rate-limits the whole world together,
+which is worse. This slows casual abuse and does not stop a determined one.
+
+### Mistakes
+
+**M-46 · `IndexError` when the limit is zero.** With `query_rate_limit = 0` the
+deque is empty, `len(hits) >= 0` is true, and the retry-after computation read
+`hits[0]` on an empty deque. The disable-the-limit path would have raised a 500
+on the first request. Caught by a test written for exactly that boundary before
+the code was run against it.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| Limiter unit behaviour | 6 tests: window slides, clients isolated, retry-after counts down, blocked calls do not extend lockout |
+| Client identification | 3 tests over forwarded header, multi-hop chain, socket fallback |
+| Endpoint | 429 after the cap with a `Retry-After` header; 0 disables; analytics endpoints unaffected |
+| Shared secret | 401 on missing and on wrong key; accepted when correct; absent config requires none |
+| **Mutation tests** | Never blocking fails 6; recording blocked attempts fails the starvation test |
+| Full suite | 224 passed |

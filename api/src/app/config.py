@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     # Lower this if a gateway rejects the request on available credit.
     agent_max_tokens: int = 8000
 
+    # /api/query costs money per call, so it is capped per client. 0 disables.
+    query_rate_limit: int = 10
+    query_rate_window_seconds: int = 3600
+
+    # Optional shared secret for /api/query. Useful to close the endpoint
+    # entirely; NOT useful for protecting a public browser app, which would
+    # have to ship the secret in its bundle.
+    query_api_key: str | None = None
+
     max_rows: int = 5000
 
     model_config = SettingsConfigDict(

@@ -10,16 +10,51 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 
-from fastapi import APIRouter, HTTPException
+import secrets
+
+from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.agent.runner import AgentRefused, AgentUnavailable, SqlAgent
 from app.config import get_settings
 from app.db import agent_connection
 from app.models import QueryAttempt, QueryRequest, QueryResponse
+from app.ratelimit import SlidingWindowLimiter, client_key
 
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["agent"])
+
+_settings = get_settings()
+_limiter = SlidingWindowLimiter(
+    limit=_settings.query_rate_limit,
+    window_seconds=_settings.query_rate_window_seconds,
+)
+
+
+def _enforce_limits(request: Request, presented_key: str | None) -> None:
+    """Shared secret first, then the per-client rate limit."""
+    settings = get_settings()
+
+    expected = settings.query_api_key
+    if expected:
+        # Constant-time: a plain == leaks the matching prefix length by timing.
+        if not presented_key or not secrets.compare_digest(presented_key, expected):
+            raise HTTPException(status_code=401, detail="Invalid or missing API key.")
+
+    if settings.query_rate_limit <= 0:
+        return
+
+    allowed, retry_after = _limiter.check(client_key(request))
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Rate limit reached: {settings.query_rate_limit} questions per "
+                f"{settings.query_rate_window_seconds // 60} minutes. "
+                f"Try again in {int(retry_after) + 1}s."
+            ),
+            headers={"Retry-After": str(int(retry_after) + 1)},
+        )
 
 
 def _build_agent() -> SqlAgent:
@@ -56,12 +91,18 @@ def _build_agent() -> SqlAgent:
 
 
 @router.post("/query", response_model=QueryResponse)
-def natural_language_query(payload: QueryRequest) -> QueryResponse:
+def natural_language_query(
+    payload: QueryRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+) -> QueryResponse:
     """Answer a natural-language question about the market data.
 
     Returns the plain-English answer, the SQL that produced it, and the rows,
     so the answer can always be audited against the query that backs it.
     """
+    _enforce_limits(request, x_api_key)
+
     try:
         agent = _build_agent()
     except AgentUnavailable as exc:
