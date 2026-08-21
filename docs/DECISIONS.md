@@ -1051,3 +1051,16 @@ things to check on the first real call: whether `cache_control: {"type":
 persistent zero means the ~2,300-token system prompt is billed in full every
 call), and whether `stop_reason: "refusal"` is passed through. Both are
 handled in code; neither is confirmed against a gateway.
+
+**M-36 · Documented a Neon console UI that does not exist.** `DEPLOY.md` told
+the reader to "copy **both** connection strings" from Connection Details, as if
+two were displayed. Neon shows **one**, with a Connection-pooling toggle that
+switches which is rendered — and the toggle defaults to on, so the string a new
+user sees is the pooled one, which is the wrong one for migrations. A reader
+following the runbook literally would have looked for a second string that was
+not there, and the most likely recovery — using the one string they had — is
+the failure mode the surrounding paragraph warns about. *Fix:* describe the
+toggle, and note that the two strings differ only by `-pooler` in the hostname
+so either can be derived from the other by hand. *Lesson:* a runbook step that
+describes someone else's UI is a claim about the world with a shelf life, and
+this one was never checked against the product.

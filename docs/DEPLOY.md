@@ -20,17 +20,32 @@ it needs accounts and credentials that live with you, not in the repository.
 ## 1. Neon — the database
 
 1. Create a project (Postgres 17, same region you will pick on Render).
-2. From **Connection Details**, copy **both** connection strings. They are
-   different hosts and are not interchangeable:
+2. Get **both** connection strings. The console shows only **one** at a time:
+   click **Connect**, and use the **Connection pooling** toggle to switch which
+   one is displayed. That toggle is **on by default**, so the string you see
+   first is the *pooled* one.
 
-   | | Host looks like | Used for |
+   You do not actually need the toggle — the two strings are identical except
+   for the hostname, so you can write the other one yourself:
+
+   ```text
+   pooled   ...@ep-cool-darkness-a1b2c3d4-pooler.us-east-2.aws.neon.tech/dbname?sslmode=require
+   direct   ...@ep-cool-darkness-a1b2c3d4.us-east-2.aws.neon.tech/dbname?sslmode=require
+                                          ^^^^^^^ the only difference
+   ```
+
+   Same role, same password, same database. They are still not
+   interchangeable:
+
+   | | Host | Used for |
    |---|---|---|
-   | **Direct** | `ep-xxx.region.aws.neon.tech` | migrations, `REFRESH MATERIALIZED VIEW CONCURRENTLY`, the nightly job |
-   | **Pooled** | `ep-xxx-**pooler**.region.aws.neon.tech` | the Render API's two connection pools |
+   | **Direct** | no `-pooler` | migrations, `backfill`, `REFRESH MATERIALIZED VIEW CONCURRENTLY`, the nightly job |
+   | **Pooled** | `-pooler` | the Render API's two connection pools |
 
-   The pooled endpoint runs pgbouncer in transaction mode. DDL and
-   `REFRESH ... CONCURRENTLY` do not survive it. Using the pooled URL for
-   migrations fails *after* partial work has already been committed.
+   The pooled endpoint runs pgbouncer in transaction mode, which discards
+   session state between transactions. DDL and `REFRESH ... CONCURRENTLY` do
+   not survive that. Using the pooled URL for migrations fails *after* partial
+   work has already been committed.
 
 3. Choose passwords for the two restricted roles — they are created by the
    migration, not by Neon:
