@@ -762,3 +762,149 @@ recorded PID.
 | Unconfigured Ask | Renders the 503 guidance, not a raw error |
 | Typecheck / build | Clean; 666 kB bundle (191 kB gzip), Recharts-dominated |
 | Backend suite | 175 passed, unchanged |
+
+---
+
+## Phase 6 — Deploy artifacts + docs
+
+Outcome: a container image that runs the API against a real database, blueprint
+and workflow files for Render / Vercel / GitHub Actions, a deployment runbook,
+and a README whose numbers are generated from the database rather than typed.
+
+### Decisions
+
+**D-71 · Pinned dependencies to the versions that actually pass, not to
+whatever resolves today.** A plain `uv pip compile api/pyproject.toml` resolved
+`anthropic==1.0.0`; the 175-test suite passes against `0.125.0`. The declared
+range (`anthropic>=0.40`) permits both, so a deploy built next week would have
+shipped an untested **major** version of the SDK the entire agent is written
+against — `output_config`, `cache_control`, and the `stop_reason == "refusal"`
+check are all SDK-surface. `constraints.txt` records the verified environment
+and both lockfiles compile against it, so the image installs what was tested.
+Upgrading is now a deliberate, testable change rather than a build-day
+accident.
+
+**D-72 · The API image is not `pip install`-ed; it runs from the source tree.**
+`app/sql.py` and `app/config.py` both derive the repository root as
+`Path(__file__).resolve().parents[3]`, and `sql.py` loads the analytics queries
+from `db/queries/` at runtime — deliberately, so the SQL the tests validate is
+the SQL the endpoints execute. Installing the package into `site-packages`
+moves `app/` to a different depth, `parents[3]` resolves elsewhere, and every
+analytics endpoint fails on first request with `FileNotFoundError`. The image
+therefore copies `api/src` and `db/queries` at their repository-relative paths
+and sets `PYTHONPATH`. This also forces the Docker build context to be the repo
+root rather than `api/`, which is why `render.yaml` sets `dockerContext: .`.
+
+**D-73 · The Dockerfile asserts the layout at build time.** Because D-72 is an
+invisible coupling — nothing in `api/` references `db/queries` textually — a
+`RUN python -c "import app.main, app.sql; assert len(app.sql.available()) >= 8"`
+step fails the *build* if the layout ever breaks, instead of failing the first
+production request. It printed `layout ok: 8 queries visible`.
+
+**D-74 · One uvicorn worker, and pool ceilings sized against a real limit.**
+`003_roles.sql` sets `CONNECTION LIMIT 5` on `sqlproj_agent`. Pool sizes
+multiply by worker count, so two workers at `agent_pool_max_size=3` would
+exceed the role's own limit and turn a burst of questions into connection
+errors. Single worker, `API_POOL_MAX_SIZE=4`, `AGENT_POOL_MAX_SIZE=3`. The
+endpoints are synchronous `psycopg` reads served from FastAPI's threadpool, so
+concurrency comes from the threadpool and the pools, not from workers.
+
+**D-75 · `/api/health` returns 200 when degraded, and Render is pointed at it
+anyway.** Stale data is an ingestion failure, not an API failure. Returning
+non-2xx would make Render restart-loop a perfectly healthy service and would
+not fix the data. The `status` field carries the distinction; `render.yaml`
+says so in a comment so the next person does not "fix" it.
+
+**D-76 · No SPA catch-all rewrite on Vercel.** `App.tsx` switches tabs with
+`useState`; there is no client-side router, so `/` is the only real route. A
+catch-all rewrite would convert genuine 404s into a silently blank
+`index.html`.
+
+**D-77 · `cancel-in-progress: false` on the nightly workflow.** Cancelling a
+run mid-ingestion buys nothing — the next scheduled run is 24 hours away, not
+24 seconds — and leaves an `ingest_runs` row marked started. Upserts are
+idempotent, so queueing is strictly better than cancelling.
+
+**D-78 · The workflow fails fast on a missing secret.** Without the explicit
+check, an unset `NEON_DATABASE_URL` falls through to the localhost default in
+`ingest/config.py` and the run dies with a connection error that reads like a
+Neon outage. Three lines of `if [ -z ... ]` turn a misleading symptom into the
+actual cause.
+
+**D-79 · README insights are generated, and every comparison is *selected* by
+the data.** `scripts/insights.py --inject` rewrites the section between two
+markers. More importantly, the script does not hardcode which sectors to
+compare: `worst_paid_risk()` searches all sector pairs for the largest
+volatility gap where the riskier sector also returned less, and reports
+whichever pair wins. A refresh that falsifies a claim rewrites the prose
+instead of leaving a stale assertion. The drawdown claim goes further and
+checks its own separation, emitting "the ranges now overlap" if a future window
+breaks it.
+
+### Mistakes
+
+**M-28 · Nearly shipped an untested major SDK version.** The first
+`uv pip compile` run silently pinned `anthropic==1.0.0` into
+`api/requirements.txt` — a file whose entire purpose is reproducibility — and I
+was one commit from baking it into the deployed image. Caught only by reading
+the diff of a generated file instead of trusting it. *Cost:* none, caught
+before commit. *Fix:* D-71. *Lesson:* "pin the dependencies" and "pin the
+dependencies **you tested**" are different tasks, and a lockfile generated
+fresh does the first one while looking like the second.
+
+**M-29 · Three of the four README insights were wrong on first draft.** All
+three were fixed by checking rather than by reasoning harder:
+
+- *"The top of the table is dominated by low-volatility names."* False — LLY
+  ranks third on risk-adjusted return with the second-highest volatility in the
+  set (35.7%).
+- *"Crypto is one position wearing three tickers."* True but not distinctive:
+  crypto's internal correlation is 0.88 and **Energy's is 0.82**. High internal
+  correlation is a property of narrow sectors, not of crypto. The claim as
+  written implied a crypto-specific phenomenon the data does not show. The
+  comparison was also unfair — average intra-crypto correlation (one sector)
+  against average all-equity correlation (four sectors, structurally lower).
+  Rewritten around within-sector averages, which is like-for-like.
+- *"Volatility understates how bad the bad case gets."* The generated text
+  **contradicted itself**: "2.2x deeper, while volatility is only 2.2x". The
+  chosen pair (SOL vs MSFT) happened to have identical drawdown and volatility
+  ratios, so the sentence disproved its own headline. Replaced with the finding
+  that actually exists in the data — drawdown-per-unit-volatility separates
+  cleanly by the *sign of the return* (all 12 positive-return assets ≤ 0.88,
+  all 4 negative ones ≥ 1.03, no overlap), which is not an asset-class story at
+  all: MSFT sits with the crypto assets.
+
+*Cost:* none shipped. *Lesson:* generated prose reads as authoritative because
+it contains real numbers. The numbers being real does not make the sentence
+around them true.
+
+**M-30 · Hardcoded a count inside generated text.** Insight 3 asserted MSFT was
+"above two of the three crypto assets". I checked and believed it was above one
+and tied with another; computing it showed the original was right — MSFT is
+above two. Both my assertion and my correction were guesses about a number
+sitting in the database. *Fix:* count it in the script. *Lesson:* the point of
+generating prose from data is not to save typing, it is that hand-written
+numbers inside generated text are the least trustworthy part of the output.
+
+**M-31 · Asserted an unnecessary `PYTHONPATH` in the README quickstart.** Wrote
+`PYTHONPATH=api/src .venv/bin/uvicorn ...` from habit; the editable install
+already puts `app` on the path, verified by importing it from `/tmp`. Harmless
+but wrong, and a reader would have concluded the install was incomplete.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| `docker build -f api/Dockerfile .` | Succeeds; build-time layout assertion prints `layout ok: 8 queries visible` |
+| Container against live Postgres | `/api/health` → `status: ok`, 16 assets, 13,077 rows |
+| Containerised analytics | `sector-performance` returns all five sectors with correct figures |
+| Containerised `/api/query` unconfigured | 503, as designed |
+| `render.yaml` | Valid YAML; 8 env vars, 4 marked `sync: false` |
+| `web/vercel.json` | Valid JSON |
+| `daily-refresh.yml` | Valid YAML; `schedule` + `workflow_dispatch`, 8 steps |
+| README mermaid diagram | Parsed with mermaid 11 under jsdom — `block 1: PARSES OK` |
+| README endpoint table | Cross-checked against `/openapi.json`, 11 paths |
+| README test counts | Cross-checked against `pytest --collect-only` per file |
+| Correlation claim (251 shared days) | Confirmed: equity×crypto pairs report `observations: 251` |
+| Correlation query correctness | AAPL×MSFT and XOM×CVX reproduced to 4 dp by independent Python |
+| Insights regeneration | `scripts/insights.py --inject` round-trips cleanly |
