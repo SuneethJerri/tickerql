@@ -1198,3 +1198,22 @@ into text, and Llama 4 Maverick returns empty content for this prompt entirely.
 | Leaked-tool-call detection | 5 tests; mutation-checked (disabling detection fails 3) |
 | Live agent, Llama 3.3, 3 questions | 3/3 correct SQL and answers, 7-13s each, 2 model calls each |
 | Full suite against Neon | 197 passed (90s; network-bound) |
+
+**M-43 · Put JSON "comments" in a file validated against a strict schema.**
+`web/vercel.json` carried a `"//"` key holding deployment notes. That
+convention is common in `package.json`, which ignores unknown keys, but
+Vercel's config schema sets `additionalProperties: false` and the deploy failed
+with "should NOT have additional property `//`". The notes moved to
+`web/DEPLOY-NOTES.md`. *Cost:* one failed deploy for the user. *Fix:* validated
+the file against Vercel's published schema, and confirmed the check is real by
+re-adding the key and watching it be rejected. Vercel's own schema fails
+jsonschema's metaschema check on an unrelated `functions.experimentalTriggers`
+branch, so validation has to skip `check_schema`. *Lesson:* a convention that
+is tolerated by one JSON consumer is not a property of JSON.
+
+**M-44 · The runbook said to set the Root Directory but nothing enforced it.**
+Vercel's first build ran from the repository root, found `api/pyproject.toml`,
+and built the FastAPI backend as a Python project - no `npm ci`, no Vite, no
+frontend. `docs/DEPLOY.md` did say "Set Root Directory to `web`", but a
+misconfiguration that produces a *successful-looking* build is one the docs
+cannot catch. The give-away is `Using Python 3.12` in a frontend build log.
