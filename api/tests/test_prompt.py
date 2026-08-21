@@ -135,3 +135,37 @@ def test_prompt_contains_no_volatile_content() -> None:
         assert marker not in SYSTEM_PROMPT.lower()
     # A bare 4-digit year is fine; an embedded full date would not be.
     assert not re.search(r"\d{4}-\d{2}-\d{2}T", SYSTEM_PROMPT)
+
+
+# ---------------------------------------------------------------------------
+# The prompt states an asset count and enumerates the sectors. Nothing checked
+# either, so growing the universe from 16 to 105 would have left the model
+# being told there were 16 assets in five sectors that no longer exist -
+# degrading every answer with no test failing anywhere.
+# ---------------------------------------------------------------------------
+
+def test_prompt_states_the_real_asset_count(owner_url) -> None:
+    import re
+
+    import psycopg
+
+    with psycopg.connect(owner_url) as conn, conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM market.assets WHERE is_active")
+        actual = cur.fetchone()[0]
+
+    stated = re.search(r"the tracked universe \((\d+) rows", SYSTEM_PROMPT)
+    assert stated, "the prompt no longer states an asset count"
+    assert int(stated.group(1)) == actual, (
+        f"prompt says {stated.group(1)} assets, database has {actual}"
+    )
+
+
+def test_prompt_lists_every_real_sector(owner_url) -> None:
+    import psycopg
+
+    with psycopg.connect(owner_url) as conn, conn.cursor() as cur:
+        cur.execute("SELECT DISTINCT sector FROM market.assets WHERE is_active")
+        sectors = {r[0] for r in cur.fetchall()}
+
+    missing = {s for s in sectors if f"'{s}'" not in SYSTEM_PROMPT}
+    assert not missing, f"sectors absent from the prompt: {sorted(missing)}"

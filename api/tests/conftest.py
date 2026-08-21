@@ -54,3 +54,32 @@ def owner_url(env) -> str:
     if not url:
         pytest.skip("DATABASE_URL not configured")
     return url
+
+
+# ---------------------------------------------------------------------------
+# The universe is read from the database rather than hardcoded. Tests that
+# asserted `== 16` had to be edited every time an asset was added, and the
+# literal appeared in disguised forms (`256` for the correlation matrix,
+# `range(1, 17)` for volatility ranks) that a grep for "16" would miss.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="session")
+def universe(owner_url) -> dict:
+    import psycopg
+
+    with psycopg.connect(owner_url) as conn, conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM market.assets WHERE is_active")
+        count = cur.fetchone()[0]
+        cur.execute("SELECT DISTINCT sector FROM market.assets WHERE is_active")
+        sectors = {r[0] for r in cur.fetchall()}
+        cur.execute(
+            "SELECT min(n) FROM (SELECT count(*) n FROM market.price_history"
+            " GROUP BY asset_id) x"
+        )
+        min_bars = cur.fetchone()[0]
+    return {"count": count, "sectors": sectors, "min_bars": min_bars}
+
+
+@pytest.fixture(scope="session")
+def asset_count(universe) -> int:
+    return universe["count"]

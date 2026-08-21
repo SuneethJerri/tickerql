@@ -5,7 +5,7 @@ Guidance for Claude Code when working in this repository.
 ## What this is
 
 A full-stack stock/crypto analytics platform with an **agentic text-to-SQL layer**.
-Daily OHLCV for 15 assets (4 equity sectors + crypto) lands in Postgres; a FastAPI
+Daily OHLCV for 105 assets (11 GICS sectors + crypto) lands in Postgres; a FastAPI
 service exposes analytics endpoints plus a `/query` endpoint where an LLM turns a
 natural-language question into read-only SQL; a React dashboard renders it.
 

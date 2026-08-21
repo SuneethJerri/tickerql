@@ -70,12 +70,12 @@ it needs accounts and credentials that live with you, not in the repository.
    runnable by a non-superuser owner — Neon gives you no superuser, and the DDL
    was written for that constraint.
 
-5. Load the history and build the derived layer (~1 minute for 16 assets):
+5. Load the history and build the derived layer (~1 minute for 105 assets):
 
    ```bash
    .venv/bin/python -m ingest backfill --years 3
    .venv/bin/python -m ingest refresh-views
-   .venv/bin/python -m ingest coverage        # expect 753 bars/equity, 1096/crypto
+   .venv/bin/python -m ingest coverage        # expect 752 bars/equity, 1096/crypto
    ```
 
 6. **Verify the security boundary against the real deployment.** This is the
@@ -214,7 +214,7 @@ API=https://<service>.onrender.com
 
 curl -s $API/api/health | jq '{status, asset_count, price_rows, latest_bar, stale_days}'
 curl -s "$API/api/analytics/sector-performance?window=365" | jq '.[0]'
-curl -s "$API/api/analytics/correlation?window=365" | jq '.cells | length'   # 256 for 16 assets
+curl -s "$API/api/analytics/correlation?window=365" | jq '.cells | length'   # 256 for 105 assets
 
 curl -s -X POST $API/api/query \
   -H 'Content-Type: application/json' \

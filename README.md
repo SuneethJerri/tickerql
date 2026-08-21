@@ -1,6 +1,6 @@
 # Market Analytics Platform
 
-Daily OHLCV for 16 assets across four equity sectors and crypto, landing in
+Daily OHLCV for 105 assets across the 11 GICS sectors and crypto, landing in
 Postgres, served by a FastAPI analytics layer, and queryable in plain English
 by an LLM agent that **cannot write to the database** — a property enforced by
 Postgres grants, not by prompt text.
@@ -135,7 +135,7 @@ uv pip install -e ./ingest -e ./api --no-deps
 .venv/bin/python -m ingest migrate           # 001 → 002 → 003 → seed, in order
 .venv/bin/python -m ingest backfill --years 3
 .venv/bin/python -m ingest refresh-views
-.venv/bin/python -m ingest coverage          # 753 bars/equity, 1096/crypto
+.venv/bin/python -m ingest coverage          # 752 bars/equity, 1096/crypto
 
 .venv/bin/python -m pytest                   # 175 tests
 
@@ -181,46 +181,46 @@ that falsifies a claim rewrites the prose instead of quietly leaving a lie.
 
 <!-- INSIGHTS:START -->
 
-_All figures: trailing 365 calendar days ending 2026-08-20, computed from split- and dividend-adjusted closes. Risk-free rate assumed zero, so "return per unit of risk" is annualised return over annualised volatility._
+_All figures: trailing 365 calendar days ending 2026-08-21, computed from split- and dividend-adjusted closes. Risk-free rate assumed zero, so "return per unit of risk" is annualised return over annualised volatility._
 
 ### 1. Risk was not paid for — and the gap is visible inside equities, not just against crypto
 
-**Crypto ran 2.9x Technology's volatility (57.1% vs 19.8%) and returned -44.7% against Technology's 34.0%** — more risk, and a worse outcome, over the same window.
+**Crypto ran 3.8x Utilities's volatility (57.3% vs 15.2%) and returned -52.5% against Utilities's 8.9%** — more risk, and a worse outcome, over the same window.
 
-That comparison is easy to dismiss as a crypto story. It is not. Among equity sectors alone, **Energy carried 1.21x Healthcare's volatility (24.9% vs 20.7%) to return 48.7% — less than Healthcare's 58.2%.** Ranked by return per unit of risk, the sectors order Healthcare (2.83), Energy (1.96), Technology (1.72), Financials (1.54), Crypto (-0.78).
+That comparison is easy to dismiss as a crypto story. It is not. Among equity sectors alone, **Information Technology carried 1.24x Industrials's volatility (21.7% vs 17.5%) to return 15.6% — less than Industrials's 32.2%.** Ranked by return per unit of risk, the sectors order Energy (2.56), Health Care (2.10), Industrials (1.85), Materials (1.29), Financials (1.08), Real Estate (0.84), Information Technology (0.72), Utilities (0.59), Consumer Staples (0.48), Consumer Discretionary (-0.00), Communication Services (-0.30), Crypto (-0.92).
 
 ### 2. Crypto diversifies a stock portfolio; it does not diversify itself
 
-Average pairwise correlation *within* crypto is **0.88** — the highest of any sector. The tempting conclusion is that crypto is uniquely one position wearing three tickers. The data does not support that: Crypto 0.88, Energy 0.82, Financials 0.65, Healthcare 0.20, Technology 0.17. **Energy is nearly as tightly coupled**, so high internal correlation is a property of narrow sectors generally, not something peculiar to crypto.
+Average pairwise correlation *within* crypto is **0.72** — the highest of any sector. The tempting conclusion is that crypto is uniquely one position wearing three tickers. The data does not support that: Crypto 0.72, Energy 0.61, Utilities 0.60, Financials 0.50, Consumer Staples 0.41, Real Estate 0.35, Health Care 0.31, Consumer Discretionary 0.29, Materials 0.27, Industrials 0.27, Communication Services 0.18, Information Technology 0.16. **Energy is nearly as tightly coupled**, so high internal correlation is a property of narrow sectors generally, not something peculiar to crypto.
 
-What *is* distinctive is the other number. Crypto's average correlation to large-cap tech is **0.23**, against a within-sector equity average of 0.40. So the diversification benefit runs outward, not inward: adding a second crypto to a crypto book buys almost nothing, while adding crypto to an equity book genuinely does — the opposite of the common framing of crypto as levered tech beta.
+What *is* distinctive is the other number. Crypto's average correlation to large-cap tech is **0.18**, against a within-sector equity average of 0.33. So the diversification benefit runs outward, not inward: adding a second crypto to a crypto book buys almost nothing, while adding crypto to an equity book genuinely does — the opposite of the common framing of crypto as levered tech beta.
 
 ### 3. Drawdown carries information volatility does not — and it is not about asset class
 
-SOL fell **-74.9%** peak-to-trough against MSFT's **-34.5%**, the worst equity. Taken alone that says little: 2.2x the drawdown on 2.2x the volatility is roughly what volatility already predicts.
+ADA fell **-84.6%** peak-to-trough against ORCL's **-64.6%**, the worst equity. Taken alone that says little: 1.3x the drawdown on 1.2x the volatility is roughly what volatility already predicts.
 
 Divide each asset's drawdown by its own volatility and the picture separates cleanly — but not along the line you would expect:
 
-- All **12** assets that finished the window positive sit at or below **0.88** drawdowns-per-unit-volatility (deepest: CVX).
-- All **4** that finished negative sit at or above **1.03** (shallowest: ETH).
-- The two groups do not overlap — the gap runs from 0.88 to 1.03.
+- All **66** assets that finished the window positive sit at or below **1.04** drawdowns-per-unit-volatility (deepest: DHR).
+- All **39** that finished negative sit at or above **0.74** (shallowest: BA).
+- The two groups do not overlap only partially in this window (the ranges now overlap).
 
-The split is by *outcome*, not by asset type: MSFT is an equity that lost only -4.0% yet sits in the second group, deeper on this measure than 2 of the 3 crypto assets. Volatility is direction-blind by construction — it treats a 5% rise and a 5% fall as the same event — so it prices the size of the moves but not the order they arrive in. Drawdown is the order. For position sizing that difference is the whole game: it is the loss an investor actually has to sit through.
+The split is by *outcome*, not by asset type: BA is an equity that lost only -6.5% yet sits in the second group, level with the crypto assets on this measure. Volatility is direction-blind by construction — it treats a 5% rise and a 5% fall as the same event — so it prices the size of the moves but not the order they arrive in. Drawdown is the order. For position sizing that difference is the whole game: it is the loss an investor actually has to sit through.
 
 ### 4. The best return and the best investment are different assets
 
-LLY posted the highest return in the set at **77.8%** — but ranks 3rd on a risk-adjusted basis, because it took 35.7% volatility to get there. **JNJ** leads at 2.95 with 18.6% volatility and a -11.0% maximum drawdown — the shallowest in the set.
+AMD posted the highest return in the set at **179.8%** — but ranks 4th on a risk-adjusted basis, because it took 70.6% volatility to get there. **MPC** leads at 3.58 with 34.2% volatility and a -18.3% maximum drawdown — the shallowest in the set.
 
 | Asset | Sector | Return | Ann. vol | Return/risk | Max drawdown |
 |---|---|---:|---:|---:|---:|
-| JNJ | Healthcare | 54.4% | 18.6% | 2.95 | -11.0% |
-| XOM | Energy | 57.4% | 25.5% | 2.30 | -20.1% |
-| LLY | Healthcare | 77.8% | 35.7% | 2.22 | -23.2% |
-| ETH | Crypto | -44.8% | 65.7% | -0.70 | -67.6% |
-| SOL | Crypto | -51.7% | 69.2% | -0.77 | -74.9% |
-| BTC | Crypto | -35.4% | 43.9% | -0.83 | -53.1% |
+| MPC | Energy | 113.1% | 34.2% | 3.58 | -18.3% |
+| PSX | Energy | 90.2% | 31.0% | 3.21 | -17.3% |
+| JNJ | Health Care | 52.9% | 18.7% | 2.87 | -11.0% |
+| INTU | Information Technology | -44.8% | 49.5% | -0.97 | -63.4% |
+| TMUS | Communication Services | -26.7% | 29.5% | -0.97 | -33.5% |
+| NKE | Consumer Discretionary | -47.3% | 36.8% | -1.25 | -49.3% |
 
-_Top three and bottom three of 16. 4 assets finished the window with a negative ratio: MSFT, ETH, SOL, BTC — the last of which (BTC, -0.83) was the worst of the set._
+_Top three and bottom three of 105. 39 assets finished the window with a negative ratio: SO, PEP, MSFT, BA, TRX, SHW, COST, BKNG, DIS, PG, CRM, CMCSA, T, ABT, LOW, AMT, SPGI, HD, ADBE, ORCL, ACN, MCD, ETH, META, BTC, SOL, BCH, LINK, CCI, XRP, DOGE, AVAX, LTC, DOT, NFLX, ADA, INTU, TMUS, NKE — the last of which (NKE, -1.25) was the worst of the set._
 
 <!-- INSIGHTS:END -->
 
@@ -232,7 +232,7 @@ Schema is `market`, not `public`.
 
 | Relation | Kind | Notes |
 |---|---|---|
-| `assets` | table | 16 rows. `ticker` unique, `asset_type ∈ {stock, crypto}`, `source_symbol` maps `BTC` → `BTC-USD`, `coingecko_id` for the mcap pass |
+| `assets` | table | 105 rows. `ticker` unique, `asset_type ∈ {stock, crypto}`, `source_symbol` maps `BTC` → `BTC-USD`, `coingecko_id` for the mcap pass |
 | `price_history` | table | PK `(asset_id, date)`. `close > 0` and `high >= low` enforced by CHECK |
 | `ingest_runs` | table | Per-run audit. **Deliberately not granted to the agent role** |
 | `daily_returns` | matview | Simple and log returns from `COALESCE(adj_close, close)` |
@@ -269,7 +269,7 @@ refresh takes an `ACCESS EXCLUSIVE` lock and stalls the API.
 | `GET` | `/api/analytics/sector-performance` | return, volatility, return/risk per sector |
 | `GET` | `/api/analytics/sector-index` | equal-weighted cumulative index, rebased to 100 |
 | `GET` | `/api/analytics/volatility` | volatility ranking |
-| `GET` | `/api/analytics/correlation` | pairwise matrix; 256 cells for 16 assets |
+| `GET` | `/api/analytics/correlation` | pairwise matrix; 256 cells for 105 assets |
 | `GET` | `/api/analytics/periods` | best/worst days or months |
 | `GET` | `/api/analytics/moving-averages/{ticker}` | 20/50/200-day, with a `is_partial` flag during ramp-up |
 | `GET` | `/api/analytics/risk-return` | the scatter feed |

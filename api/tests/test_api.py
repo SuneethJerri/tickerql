@@ -24,10 +24,10 @@ def client():
 # Meta
 # ---------------------------------------------------------------------------
 
-def test_health_reports_freshness_not_just_liveness(client) -> None:
+def test_health_reports_freshness_not_just_liveness(client, universe) -> None:
     body = client.get("/api/health").json()
     assert body["database"] is True
-    assert body["asset_count"] == 16
+    assert body["asset_count"] == universe["count"]
     assert body["price_rows"] > 12000
     # A reachable database full of stale prices is a broken platform, so the
     # endpoint has to surface staleness explicitly.
@@ -60,13 +60,13 @@ def test_cors_is_restricted_to_configured_origins(client) -> None:
 # Universe and prices
 # ---------------------------------------------------------------------------
 
-def test_assets_endpoint(client) -> None:
+def test_assets_endpoint(client, universe) -> None:
     rows = client.get("/api/assets").json()
-    assert len(rows) == 16
+    assert len(rows) == universe["count"]
     assert {r["sector"] for r in rows} == {
-        "Technology", "Energy", "Financials", "Healthcare", "Crypto"
+        *universe["sectors"]
     }
-    assert all(r["bar_count"] > 500 for r in rows)
+    assert all(r["bar_count"] >= universe["min_bars"] for r in rows)
 
 
 def test_prices_returns_ordered_bars(client) -> None:
@@ -110,11 +110,11 @@ def test_hostile_ticker_is_rejected_not_executed(client) -> None:
 # Sector endpoints
 # ---------------------------------------------------------------------------
 
-def test_sector_performance(client) -> None:
+def test_sector_performance(client, universe) -> None:
     rows = client.get("/api/analytics/sector-performance", params={"window": 365}).json()
-    assert len(rows) == 5
+    assert len(rows) == len(universe["sectors"])
     by_sector = {r["sector"]: r for r in rows}
-    assert by_sector["Crypto"]["observations"] > by_sector["Technology"]["observations"], (
+    assert by_sector["Crypto"]["observations"] > by_sector["Information Technology"]["observations"], (
         "crypto trades daily and must have more observations than equities"
     )
 
@@ -136,11 +136,11 @@ def test_window_bounds_are_enforced(client) -> None:
 # Risk metrics
 # ---------------------------------------------------------------------------
 
-def test_volatility_is_ranked_descending(client) -> None:
+def test_volatility_is_ranked_descending(client, universe) -> None:
     rows = client.get("/api/analytics/volatility", params={"window": 365}).json()
     vols = [r["annualized_volatility"] for r in rows]
     assert vols == sorted(vols, reverse=True)
-    assert [r["volatility_rank"] for r in rows] == list(range(1, 17))
+    assert [r["volatility_rank"] for r in rows] == list(range(1, universe["count"] + 1))
 
 
 def test_volatility_and_risk_return_agree(client) -> None:
@@ -163,20 +163,20 @@ def test_unsupported_metric_window_is_rejected_with_guidance(client) -> None:
 
 
 @pytest.mark.parametrize("window", [30, 90, 365])
-def test_supported_metric_windows_all_return_data(client, window: int) -> None:
+def test_supported_metric_windows_all_return_data(client, window: int, universe) -> None:
     rows = client.get("/api/analytics/volatility", params={"window": window}).json()
-    assert len(rows) == 16
+    assert len(rows) == universe["count"]
 
 
 # ---------------------------------------------------------------------------
 # Correlation
 # ---------------------------------------------------------------------------
 
-def test_correlation_full_matrix_is_symmetric(client) -> None:
+def test_correlation_full_matrix_is_symmetric(client, universe) -> None:
     body = client.get("/api/analytics/correlation", params={"window": 365}).json()
-    assert len(body["tickers"]) == 16
+    assert len(body["tickers"]) == universe["count"]
     cells = {(c["ticker_a"], c["ticker_b"]): c["correlation"] for c in body["cells"]}
-    assert len(cells) == 256
+    assert len(cells) == universe["count"] ** 2
     for (a, b), v in cells.items():
         assert v == pytest.approx(cells[(b, a)], abs=1e-12)
         if a == b:

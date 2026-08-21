@@ -39,13 +39,38 @@ def _f(value) -> float | None:
 class YFinanceSource:
     name = "yfinance"
 
+    # One request per chunk. A single un-chunked call means one bad ticker fails
+    # every ticker; at ~105 assets that is the whole universe lost to one
+    # delisting. Chunks are fetched independently and a failed chunk is logged
+    # and skipped, so the rest of the run still lands.
+    CHUNK_SIZE = 40
+
     def fetch(
+        self, symbols: Sequence[str], start: date, end: date
+    ) -> dict[str, list[Bar]]:
+        symbols = list(symbols)
+        if not symbols:
+            return {}
+        if len(symbols) <= self.CHUNK_SIZE:
+            return self._fetch_chunk(symbols, start, end)
+
+        out: dict[str, list[Bar]] = {}
+        for i in range(0, len(symbols), self.CHUNK_SIZE):
+            chunk = symbols[i : i + self.CHUNK_SIZE]
+            try:
+                out.update(self._fetch_chunk(chunk, start, end))
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "chunk %d-%d failed (%s); continuing with the rest",
+                    i, i + len(chunk), exc,
+                )
+        return out
+
+    def _fetch_chunk(
         self, symbols: Sequence[str], start: date, end: date
     ) -> dict[str, list[Bar]]:
         yf = _import_yf()
         symbols = list(symbols)
-        if not symbols:
-            return {}
 
         # yfinance treats `end` as exclusive.
         frame = yf.download(

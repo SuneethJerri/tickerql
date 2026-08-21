@@ -24,14 +24,20 @@ You may read exactly these five relations. Nothing else is readable, including
 system catalogs and `market.ingest_runs`.
 
 ------------------------------------------------------------------------------
-market.assets — the tracked universe (16 rows, one per instrument)
+market.assets — the tracked universe (105 rows, one per instrument)
 ------------------------------------------------------------------------------
   id            integer   primary key
   ticker        text      display symbol, uppercase: 'AAPL', 'BTC'
   name          text      'Apple Inc.', 'Bitcoin'
   asset_type    text      'stock' | 'crypto'
-  sector        text      'Technology' | 'Energy' | 'Financials'
-                          | 'Healthcare' | 'Crypto'
+  sector        text      GICS sector for equities, plus 'Crypto':
+                          'Information Technology' | 'Communication Services'
+                          | 'Consumer Discretionary' | 'Consumer Staples'
+                          | 'Energy' | 'Financials' | 'Health Care'
+                          | 'Industrials' | 'Materials' | 'Real Estate'
+                          | 'Utilities' | 'Crypto'
+                          Note: 'Technology' and 'Healthcare' are NOT valid;
+                          use 'Information Technology' and 'Health Care'.
   currency      text      always 'USD'
   is_active     boolean
 

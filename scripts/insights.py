@@ -24,26 +24,24 @@ from pathlib import Path
 
 import psycopg
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _env import require  # noqa: E402
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "api" / "src"))
 from app import sql  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WINDOW = 365
-CRYPTO_TICKERS = ("BTC", "ETH", "SOL")
-TECH_TICKERS = ("AAPL", "MSFT", "NVDA", "GOOGL")
+# Derived from asset_type/sector at query time rather than hardcoded. The
+# previous tuples silently misclassified every crypto added after the first
+# three as an equity, which corrupted the published equity-correlation figure
+# without failing anything.
+TECH_SECTOR = "Information Technology"
 
 
 def database_url() -> str:
-    env_path = REPO_ROOT / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if line.startswith("DATABASE_URL="):
-                return line.partition("=")[2].strip()
-    url = os.environ.get("DATABASE_URL")
-    if not url:
-        sys.exit("DATABASE_URL is not set and no .env was found")
-    return url
+    """Owner connection string, via the shared reader in scripts/_env.py."""
+    return require("DATABASE_URL")
 
 
 def worst_paid_risk(perf: dict, exclude: set[str] = frozenset()) -> tuple[dict, dict, float]:
@@ -76,12 +74,15 @@ def gather(conn) -> dict:
     }
     risk = sql.fetch_all(conn, "asset_risk_metrics", {"window_days": WINDOW})
 
-    cross = [corr[(a, b)] for a in CRYPTO_TICKERS for b in TECH_TICKERS]
-    intra = [corr[(a, b)] for a in CRYPTO_TICKERS for b in CRYPTO_TICKERS if a < b]
+    crypto_tickers = {r["ticker"] for r in risk if r["asset_type"] == "crypto"}
+    tech_tickers = {r["ticker"] for r in risk if r["sector"] == TECH_SECTOR}
+
+    cross = [corr[(a, b)] for a in crypto_tickers for b in tech_tickers if (a, b) in corr]
+    intra = [corr[(a, b)] for a in crypto_tickers for b in crypto_tickers if a < b]
     equity_pairs = [
         v
         for (a, b), v in corr.items()
-        if a < b and a not in CRYPTO_TICKERS and b not in CRYPTO_TICKERS
+        if a < b and a not in crypto_tickers and b not in crypto_tickers
     ]
 
     # Average correlation *inside* each sector. Comparing intra-crypto against
@@ -293,7 +294,7 @@ def render_text(d: dict) -> str:
         f"  worst-paid risk (any)    : {hi['sector']} {ratio:.2f}x vol of {lo['sector']}, lower return",
         f"  worst-paid risk (equity) : {ehi['sector']} {eratio:.2f}x vol of {elo['sector']}, lower return",
         f"  crypto<->crypto corr     : {d['crypto_crypto_corr']:.3f}",
-        f"  equity<->equity corr     : {d['equity_equity_corr']:.3f} (all pairs, 4 sectors)",
+        f"  equity<->equity corr     : {d['equity_equity_corr']:.3f} (all pairs, every sector)",
         f"  equity within-sector     : {d['equity_within_corr']:.3f} (like-for-like)",
         f"  crypto<->tech   corr     : {d['crypto_tech_corr']:.3f}",
         "",

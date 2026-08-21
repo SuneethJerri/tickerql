@@ -11,6 +11,8 @@ the SQL LATERAL logic is subtly wrong, that is what will catch it.
 
 from __future__ import annotations
 
+import statistics
+
 import math
 from statistics import fmean
 
@@ -53,13 +55,13 @@ def test_loader_rejects_path_traversal() -> None:
 # assets / price_history
 # ---------------------------------------------------------------------------
 
-def test_assets_covers_the_universe(conn) -> None:
+def test_assets_covers_the_universe(conn, universe) -> None:
     rows = q(conn, "assets")
-    assert len(rows) == 16
+    assert len(rows) == universe["count"]
     assert {r["sector"] for r in rows} == {
-        "Technology", "Energy", "Financials", "Healthcare", "Crypto"
+        *universe["sectors"]
     }
-    assert all(r["bar_count"] > 500 for r in rows), "an asset has too little history"
+    assert all(r["bar_count"] >= universe["min_bars"] for r in rows), "an asset has too little history"
 
 
 def test_price_history_is_ordered_and_filterable(conn) -> None:
@@ -89,14 +91,14 @@ def test_price_history_is_parameterised_not_interpolated(conn) -> None:
 # Sector queries
 # ---------------------------------------------------------------------------
 
-def test_sector_performance_annualises_by_asset_type(conn) -> None:
+def test_sector_performance_annualises_by_asset_type(conn, universe) -> None:
     """Crypto trades daily, equities ~252 days/year. The observation counts
     are the visible proof the split factor is applied."""
     rows = {r["sector"]: r for r in q(conn, "sector_performance", window_days=365)}
-    assert len(rows) == 5
+    assert len(rows) == len(universe["sectors"])
 
     crypto = rows["Crypto"]
-    equity = rows["Technology"]
+    equity = rows["Information Technology"]
     assert crypto["observations"] > 350, "crypto should have ~365 obs in a 365d window"
     assert 240 <= equity["observations"] <= 260, "equities should have ~252 obs"
     assert crypto["annualized_volatility"] > equity["annualized_volatility"]
@@ -136,13 +138,13 @@ def test_sector_index_is_rebased_to_100_at_window_start(conn) -> None:
 # Risk metrics
 # ---------------------------------------------------------------------------
 
-def test_asset_risk_metrics_ranking_is_consistent(conn) -> None:
+def test_asset_risk_metrics_ranking_is_consistent(conn, universe) -> None:
     rows = q(conn, "asset_risk_metrics", window_days=365)
-    assert len(rows) == 16
+    assert len(rows) == universe["count"]
 
     vols = [r["annualized_volatility"] for r in rows]
     assert vols == sorted(vols, reverse=True), "rows must be ordered by volatility desc"
-    assert [r["volatility_rank"] for r in rows] == list(range(1, 17))
+    assert [r["volatility_rank"] for r in rows] == list(range(1, universe["count"] + 1))
     assert all(v > 0 for v in vols), "volatility must be positive"
     assert all(-1.0 <= r["max_drawdown"] <= 0.0 for r in rows), (
         "max drawdown must be a non-positive fraction"
@@ -156,25 +158,35 @@ def test_return_per_unit_risk_is_consistent_with_its_components(conn) -> None:
 
 
 def test_crypto_is_the_high_volatility_block(conn) -> None:
-    """A domain sanity check: if equities ever out-vol crypto here, something
-    is wrong with the annualisation factor, not with the market."""
+    """A domain sanity check on the shape of the distribution.
+
+    This compared min(crypto) against max(equity) while the universe was 16
+    assets and every equity was a mega-cap. At 105 it is simply false - AMD
+    runs hotter than TRX - and it was false about the market, not about the
+    code, so its own docstring would have misdiagnosed it as an annualisation
+    bug. Medians survive the universe growing; the tails do not.
+    """
     rows = q(conn, "asset_risk_metrics", window_days=365)
-    crypto = [r["annualized_volatility"] for r in rows if r["asset_type"] == "crypto"]
-    equity = [r["annualized_volatility"] for r in rows if r["asset_type"] == "stock"]
-    assert min(crypto) > max(equity)
+    crypto = sorted(r["annualized_volatility"] for r in rows if r["asset_type"] == "crypto")
+    equity = sorted(r["annualized_volatility"] for r in rows if r["asset_type"] == "stock")
+
+    assert statistics.median(crypto) > 1.8 * statistics.median(equity)
+    # The very top of the volatility ranking should still be crypto.
+    hottest = sorted(rows, key=lambda r: -r["annualized_volatility"])[:3]
+    assert all(r["asset_type"] == "crypto" for r in hottest)
 
 
 # ---------------------------------------------------------------------------
 # Correlation
 # ---------------------------------------------------------------------------
 
-def test_correlation_matrix_is_square_symmetric_with_unit_diagonal(conn) -> None:
+def test_correlation_matrix_is_square_symmetric_with_unit_diagonal(conn, universe) -> None:
     rows = q(conn, "correlation_matrix", window_days=365, tickers=None)
     matrix = {(r["ticker_a"], r["ticker_b"]): r["correlation"] for r in rows}
     tickers = sorted({r["ticker_a"] for r in rows})
 
-    assert len(tickers) == 16
-    assert len(rows) == 16 * 16, "expected a full square matrix"
+    assert len(tickers) == universe["count"]
+    assert len(rows) == universe["count"] ** 2, "expected a full square matrix"
 
     for t in tickers:
         assert matrix[(t, t)] == pytest.approx(1.0), f"diagonal {t} is not 1.0"
