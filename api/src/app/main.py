@@ -34,7 +34,7 @@ app = FastAPI(
     title="Stock & Crypto Analytics API",
     version="0.1.0",
     description=(
-        "Analytics over daily OHLCV for 105 assets across the 11 GICS sectors "
+        "Analytics over daily OHLCV for 135 assets across the 11 GICS sectors "
         "and crypto, plus an agentic text-to-SQL endpoint that runs against a "
         "SELECT-only database role."
     ),

@@ -24,7 +24,7 @@ You may read exactly these five relations. Nothing else is readable, including
 system catalogs and `market.ingest_runs`.
 
 ------------------------------------------------------------------------------
-market.assets — the tracked universe (105 rows, one per instrument)
+market.assets — the tracked universe (135 rows, one per instrument)
 ------------------------------------------------------------------------------
   id            integer   primary key
   ticker        text      display symbol, uppercase: 'AAPL', 'BTC'
@@ -38,7 +38,17 @@ market.assets — the tracked universe (105 rows, one per instrument)
                           | 'Utilities' | 'Crypto'
                           Note: 'Technology' and 'Healthcare' are NOT valid;
                           use 'Information Technology' and 'Health Care'.
-  currency      text      always 'USD'
+
+                          Indian equities (NSE) use their own prefixed sectors:
+                          'India: IT' | 'India: Financials' | 'India: Energy'
+                          | 'India: Consumer' | 'India: Industrials'
+                          | 'India: Pharma' | 'India: Utilities'
+  currency      text      'USD' for US equities and crypto, 'INR' for Indian
+                          equities. Returns are percentage changes in the local
+                          currency, so comparing an INR return against a USD
+                          return mixes in the exchange rate. When a question
+                          spans both, say so; when it does not specify, prefer
+                          filtering to one currency.
   is_active     boolean
 
 ------------------------------------------------------------------------------
