@@ -1126,3 +1126,16 @@ satisfy the stricter of the two, and the shell is stricter.
 | `sqlproj_agent` via **pooled** endpoint | SELECT works; INSERT and UPDATE blocked; `ingest_runs` unreadable |
 | Owner credential rotated after M-38 | Confirmed by reconstructing the leaked password and asserting it now fails authentication — the only check that actually proves rotation took effect |
 | Post-rotation re-verification | 33/33 privilege tests passed again; both restricted roles connect via the pooler and are still write-blocked; 16 assets / 13,064 rows intact |
+
+**D-83 · The pre-push secret check searches for the actual secrets, not for
+patterns that look like secrets.** `scripts/check_no_secrets.py` reads the real
+values out of the local `.env` files and searches the tracked tree and the full
+commit history for each exact string. A regex scanner only finds the shapes it
+was taught and silently misses a credential in an unanticipated format; this
+cannot miss a value that is actually in the file. Non-credential values that
+legitimately appear in the repo (`localdev`, `yfinance`, the OpenRouter base
+URL, the model id) are listed explicitly rather than filtered by heuristic, so
+adding one is a visible decision. Findings report the variable name and where
+the value was found, never the value — the lesson from M-38. Verified
+non-vacuous by planting a real password in a tracked file: the check fails, and
+catches it both standalone and embedded in a derived connection URL.
