@@ -53,6 +53,29 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @field_validator(
+        "database_url_api",
+        "database_url_agent",
+        "anthropic_api_key",
+        "anthropic_model",
+        mode="before",
+    )
+    @classmethod
+    def _strip_whitespace(cls, v):
+        """Trim surrounding whitespace and quotes from pasted values.
+
+        A dashboard field pasted from a file keeps the trailing newline that
+        came with the line, and libpq reports the result as
+        `invalid channel_binding value: "require\n"` - an error that names the
+        last parameter rather than the whitespace, which sends you looking in
+        the wrong place. Quotes are stripped for the same reason: they are
+        required in .env so `source` does not split on the URL's ampersand,
+        and a hosting dashboard takes raw values.
+        """
+        if isinstance(v, str):
+            v = v.strip().strip("\"'").strip()
+        return v
+
     @field_validator("anthropic_base_url")
     @classmethod
     def _normalise_base_url(cls, v: str | None) -> str | None:

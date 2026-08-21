@@ -1217,3 +1217,23 @@ and built the FastAPI backend as a Python project - no `npm ci`, no Vite, no
 frontend. `docs/DEPLOY.md` did say "Set Root Directory to `web`", but a
 misconfiguration that produces a *successful-looking* build is one the docs
 cannot catch. The give-away is `Using Python 3.12` in a frontend build log.
+
+**M-45 · Misread a libpq error and blamed the wrong character.** Render failed
+with `invalid channel_binding value: "require` + newline. I read the quotes as
+part of the pasted value and told the user to remove quote characters from the
+Render field. They were libpq's own delimiters around the offending value: the
+real content was `require\n`, a trailing newline picked up by copying a whole
+line. The user pushed back with "there is no \"", which was correct. *Lesson:*
+an error message that quotes a value is showing you where the value starts and
+ends - that is the point of the quoting - and reading the delimiter as content
+inverts the diagnosis.
+
+**D-88 · Connection strings and keys are whitespace- and quote-stripped on
+load.** Rather than rely on careful pasting, `Settings` trims surrounding
+whitespace and quotes from `database_url_api`, `database_url_agent`,
+`anthropic_api_key` and `anthropic_model`. Quoting is genuinely required in
+`.env` (so `source` does not split on the URL's `&`) and genuinely wrong in a
+hosting dashboard, so the same value is correct in two different forms
+depending on where it lives; normalising on load makes both work. The failure
+this prevents is badly signposted - libpq names the last query parameter, not
+the whitespace - which is exactly the kind of error worth engineering out.

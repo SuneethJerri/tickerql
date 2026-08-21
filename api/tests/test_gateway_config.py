@@ -161,3 +161,50 @@ def test_omitting_effort_does_not_disturb_the_rest_of_the_request(connect) -> No
 
 def test_default_effort_is_medium() -> None:
     assert defaults().agent_effort == "medium"
+
+
+# ---------------------------------------------------------------------------
+# Values pasted into a hosting dashboard pick up whatever the copy took with
+# them. A trailing newline on a connection string made libpq report
+# `invalid channel_binding value: "require\n"`, which names the last query
+# parameter rather than the whitespace and sends you looking in the wrong place.
+# ---------------------------------------------------------------------------
+
+CONNECTION = "postgresql://sqlproj_api:pw@host.neon.tech/db?sslmode=require&channel_binding=require"
+
+
+@pytest.mark.parametrize(
+    "pasted",
+    [
+        CONNECTION + "\n",
+        CONNECTION + "\r\n",
+        CONNECTION + " ",
+        " " + CONNECTION,
+        '"' + CONNECTION + '"',
+        "'" + CONNECTION + "'",
+        '"' + CONNECTION + '"\n',
+        "\n" + CONNECTION + "\n",
+    ],
+)
+def test_pasted_connection_strings_are_cleaned(pasted: str) -> None:
+    settings = Settings(_env_file=None, database_url_api=pasted)
+    assert settings.database_url_api == CONNECTION
+
+
+def test_both_database_urls_are_cleaned_independently() -> None:
+    settings = Settings(
+        _env_file=None,
+        database_url_api=CONNECTION + "\n",
+        database_url_agent=CONNECTION.replace("sqlproj_api", "sqlproj_agent") + "\n",
+    )
+    assert not settings.database_url_api.endswith("\n")
+    assert not settings.database_url_agent.endswith("\n")
+    assert settings.database_url_api != settings.database_url_agent
+
+
+def test_api_key_is_cleaned_too() -> None:
+    assert Settings(_env_file=None, anthropic_api_key="sk-or-v1-abc\n").anthropic_api_key == "sk-or-v1-abc"
+
+
+def test_a_clean_value_is_left_alone() -> None:
+    assert Settings(_env_file=None, database_url_api=CONNECTION).database_url_api == CONNECTION
