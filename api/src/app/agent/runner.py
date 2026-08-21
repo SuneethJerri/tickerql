@@ -173,7 +173,7 @@ class SqlAgent:
         *,
         model: str = "claude-opus-5",
         max_rows: int = 1000,
-        effort: str = "medium",
+        effort: str | None = "medium",
     ) -> None:
         self._client = client
         self._connection_factory = connection_factory
@@ -182,16 +182,23 @@ class SqlAgent:
         self._effort = effort
 
     def _call_model(self, messages: list[dict]) -> Any:
-        return self._client.create(
+        kwargs: dict[str, Any] = dict(
             model=self._model,
             max_tokens=8000,
             system=system_blocks(),
             tools=[RUN_SQL_TOOL],
             messages=messages,
-            # Opus 5 thinks by default; effort trades depth against latency and
-            # cost. medium is ample for single-table-join analytics SQL.
-            output_config={"effort": self._effort},
         )
+        # Opus 5 thinks by default; effort trades depth against latency and
+        # cost. medium is ample for single-table-join analytics SQL.
+        #
+        # Omitted entirely when effort is falsy. `output_config` is an
+        # Anthropic-specific field, and a Messages-compatible gateway may
+        # reject an unrecognised field rather than ignore it — so routing
+        # through one is a config change, not a code change.
+        if self._effort:
+            kwargs["output_config"] = {"effort": self._effort}
+        return self._client.create(**kwargs)
 
     def _run_tool(self, candidate: str) -> tuple[str, bool, Attempt, dict | None]:
         """Validate then execute one candidate. Returns the model-facing text,

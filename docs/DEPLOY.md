@@ -98,6 +98,24 @@ it needs accounts and credentials that live with you, not in the repository.
    setup instructions. Add the key later and the agent starts working with no
    redeploy of anything else.
 
+   **Using OpenRouter instead of Anthropic directly.** Set four more variables
+   and use your OpenRouter key as `ANTHROPIC_API_KEY`:
+
+   | Variable | Value |
+   |---|---|
+   | `ANTHROPIC_BASE_URL` | `https://openrouter.ai/api` — **not** `.../api/v1` |
+   | `ANTHROPIC_AUTH_STYLE` | `bearer` |
+   | `ANTHROPIC_MODEL` | `anthropic/claude-opus-5` |
+   | `AGENT_EFFORT` | blank |
+
+   The SDK appends `/v1/messages` to the base URL, so a trailing `/v1`
+   double-paths into a 405; the config validator strips it, but the table
+   above is the value to type. `AGENT_EFFORT` is blanked because
+   `output_config` is Anthropic-specific — a gateway may reject an unknown
+   field rather than ignore it. Prompt caching behaviour through a gateway is
+   the other thing to watch: check `usage.cache_read_input_tokens` on a repeat
+   question and, if it is zero, you are paying full price on every call.
+
 3. First deploy will fail CORS for the browser until Vercel exists. Come back
    after step 3 and set `CORS_ORIGINS` to your Vercel origin, comma-separated
    if you want previews too:

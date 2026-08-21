@@ -32,12 +32,28 @@ def _build_agent() -> SqlAgent:
         )
     import anthropic
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    # Anthropic wants the key in `x-api-key`; gateways that speak the Messages
+    # format (OpenRouter among them) want `Authorization: Bearer`. The SDK
+    # exposes both — `api_key` sets the former, `auth_token` the latter — so
+    # supporting a gateway needs no HTTP-level special casing.
+    credential = (
+        {"auth_token": settings.anthropic_api_key}
+        if settings.anthropic_auth_style == "bearer"
+        else {"api_key": settings.anthropic_api_key}
+    )
+    client = anthropic.Anthropic(
+        base_url=settings.anthropic_base_url,  # None => api.anthropic.com
+        **credential,
+    )
+    if settings.anthropic_base_url:
+        log.info("agent routed through gateway %s", settings.anthropic_base_url)
+
     return SqlAgent(
         client.messages,
         agent_connection,
         model=settings.anthropic_model,
         max_rows=settings.max_rows,
+        effort=settings.agent_effort,
     )
 
 

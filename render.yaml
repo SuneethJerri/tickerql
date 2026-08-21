@@ -42,6 +42,21 @@ services:
       - key: ANTHROPIC_MODEL
         value: claude-opus-5
 
+      # Optional gateway (e.g. OpenRouter). Leave both unset for the direct
+      # Anthropic API. For OpenRouter set ANTHROPIC_BASE_URL to
+      # https://openrouter.ai/api (no /v1 — the SDK appends it),
+      # ANTHROPIC_AUTH_STYLE to "bearer", and ANTHROPIC_MODEL to
+      # anthropic/claude-opus-5. See docs/DEPLOY.md.
+      - key: ANTHROPIC_BASE_URL
+        sync: false
+      - key: ANTHROPIC_AUTH_STYLE
+        value: api_key
+
+      # Thinking depth. Blank omits Anthropic's `output_config` entirely, which
+      # some gateways require.
+      - key: AGENT_EFFORT
+        value: medium
+
       # Pool ceilings, sized against two upstream limits rather than guessed:
       #   * Neon's free tier caps concurrent connections, and both pools plus
       #     any ingestion run share that budget.

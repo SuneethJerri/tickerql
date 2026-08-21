@@ -150,6 +150,22 @@ locally.
 set. Everything else works without it — that is a supported state, not a broken
 one.
 
+**The agent can run against a gateway instead of api.anthropic.com** — this is
+configuration, not a code change. For OpenRouter:
+
+```bash
+ANTHROPIC_BASE_URL=https://openrouter.ai/api    # NOT .../api/v1
+ANTHROPIC_AUTH_STYLE=bearer                     # OpenRouter wants Authorization: Bearer
+ANTHROPIC_API_KEY=<your OpenRouter key>
+ANTHROPIC_MODEL=anthropic/claude-opus-5
+AGENT_EFFORT=                                   # blank: omit Anthropic's output_config
+```
+
+The Anthropic SDK appends `/v1/messages` to the base URL itself, so a trailing
+`/v1` double-paths into a 405 — the config validator strips it. `AGENT_EFFORT`
+exists because `output_config` is Anthropic-specific and a gateway may reject an
+unrecognised field rather than ignore it; leaving it blank omits the field.
+
 ---
 
 ## Business insights

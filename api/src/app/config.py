@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -39,6 +41,24 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-opus-5"
 
+    # Optional gateway. Leave unset to talk to api.anthropic.com directly.
+    #
+    # Set it to route through an Anthropic-Messages-compatible gateway such as
+    # OpenRouter (https://openrouter.ai/api). The Anthropic SDK appends
+    # "/v1/messages" itself, so a value ending in "/v1" produces
+    # ".../v1/v1/messages" and a 405 — the single most common mistake here, so
+    # the validator below strips it.
+    anthropic_base_url: str | None = None
+
+    # How the key is presented. Anthropic itself wants "x-api-key"; most
+    # gateways, OpenRouter included, want "Authorization: Bearer".
+    anthropic_auth_style: Literal["api_key", "bearer"] = "api_key"
+
+    # Thinking depth for the agent. Empty string omits `output_config`
+    # entirely, which is required for gateways that reject Anthropic-specific
+    # request fields rather than ignoring them.
+    agent_effort: str = "medium"
+
     # Ceiling on rows returned to a client from any single request.
     max_rows: int = 5000
 
@@ -47,6 +67,23 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @field_validator("anthropic_base_url")
+    @classmethod
+    def _normalise_base_url(cls, v: str | None) -> str | None:
+        """Strip a trailing "/v1" (and any trailing slash).
+
+        The Anthropic SDK always appends "/v1/messages" to the base URL, so a
+        configured value ending in "/v1" double-paths. This is correct for the
+        real API too — its base URL is "https://api.anthropic.com", not
+        ".../v1" — so the rule is safe for every Anthropic-format endpoint.
+        """
+        if not v:
+            return None
+        v = v.rstrip("/")
+        if v.endswith("/v1"):
+            v = v[: -len("/v1")]
+        return v or None
 
     @property
     def cors_origin_list(self) -> list[str]:

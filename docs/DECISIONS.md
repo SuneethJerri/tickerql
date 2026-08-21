@@ -991,3 +991,63 @@ must assert a non-zero expectation, or it is decorative.
   informative than it could be.
 - Bundle is 666 kB (191 kB gzip), Recharts-dominated. Fine for four views; would
   want code-splitting before it grows.
+
+---
+
+## Post-Phase-6 — gateway support for the agent
+
+**D-80 · The agent's LLM endpoint is configurable, defaulting to Anthropic
+direct.** Asked whether OpenRouter could be used instead. It can, and it is
+worth supporting as configuration rather than as a fork, because the choice
+belongs to whoever holds the key. Three settings do it: `ANTHROPIC_BASE_URL`
+(unset means `api.anthropic.com`), `ANTHROPIC_AUTH_STYLE` (`api_key` sends
+`x-api-key`, `bearer` sends `Authorization: Bearer` — the SDK exposes both via
+`api_key=` and `auth_token=`, so no HTTP-level special casing was needed), and
+`AGENT_EFFORT` (blank omits `output_config` entirely). No change to the guard,
+the prompt, the loop, or the database boundary — the security model is
+unaffected because it never depended on which model answered.
+
+**D-81 · `output_config` is omitted, not nulled, when effort is blank.**
+`output_config: {"effort": ...}` is Anthropic-specific. A Messages-compatible
+gateway may reject an unrecognised field rather than ignore it, and sending
+`null` is still sending the field. The request is built as a dict and the key
+is only inserted when effort is truthy, which a test pins by asserting the key
+is absent rather than falsy.
+
+**D-82 · The base URL validator strips a trailing `/v1`.** The Anthropic SDK
+appends `/v1/messages` itself, so `https://openrouter.ai/api/v1` becomes
+`.../v1/v1/messages` and returns 405. This is the most commonly reported
+mistake when pointing the SDK at OpenRouter. The rule is safe for the real API
+too, whose base URL is `https://api.anthropic.com` and not `.../v1`, so it is
+applied unconditionally rather than special-cased per host.
+
+### Mistakes
+
+**M-35 · Nearly answered a live-API question from a stale prior.** I believed
+OpenRouter was OpenAI-compatible only and had no Anthropic Messages endpoint —
+which would have made the answer "no, that needs a rewrite". It has one. Had I
+answered from memory I would have talked the user out of something that works
+and costs three config lines. *Fix:* fetched the docs before answering.
+*Lesson:* third-party API surfaces move faster than any prior about them; the
+cost of checking is a single fetch, and the cost of not checking is a confident
+wrong answer.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| SDK auth surface | Verified against installed `anthropic 0.125.0`: `api_key=` → `X-Api-Key`, `auth_token=` → `Authorization: Bearer` |
+| Base URL normalisation | 7 parametrised cases incl. `/v1`, `/v1/`, bare, trailing slash, empty, `None` |
+| End-to-end URL | `Anthropic(base_url=Settings(...).anthropic_base_url)` resolves to `https://openrouter.ai/api` with no `/v1/v1` |
+| Effort omitted when blank | Asserted the key is **absent**, and that nothing else in the request changes |
+| **Mutation test** | Forcing `if True:` fails 2 tests; removing the `/v1` strip fails 2 more — the new tests are non-vacuous |
+| Full suite | 192 passed (175 + 17 new) |
+
+### Not verified
+
+The live path through OpenRouter needs a key and has not been exercised. Two
+things to check on the first real call: whether `cache_control: {"type":
+"ephemeral"}` survives the gateway (watch `usage.cache_read_input_tokens` — a
+persistent zero means the ~2,300-token system prompt is billed in full every
+call), and whether `stop_reason: "refusal"` is passed through. Both are
+handled in code; neither is confirmed against a gateway.
