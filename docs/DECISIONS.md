@@ -1124,3 +1124,5 @@ satisfy the stricter of the two, and the shell is stricter.
 | Analytics queries against Neon | 22/22 passed |
 | `sqlproj_api` via **pooled** endpoint | Connects and returns all five sectors in 1.2s |
 | `sqlproj_agent` via **pooled** endpoint | SELECT works; INSERT and UPDATE blocked; `ingest_runs` unreadable |
+| Owner credential rotated after M-38 | Confirmed by reconstructing the leaked password and asserting it now fails authentication — the only check that actually proves rotation took effect |
+| Post-rotation re-verification | 33/33 privilege tests passed again; both restricted roles connect via the pooler and are still write-blocked; 16 assets / 13,064 rows intact |
