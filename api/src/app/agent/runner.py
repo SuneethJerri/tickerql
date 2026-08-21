@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Protocol, Sequence
+from typing import Any, Callable, Iterable, Protocol, Sequence
 
 import psycopg
 from psycopg import sql as pgsql
@@ -21,6 +21,12 @@ from app.agent import guard
 from app.agent.prompt import system_blocks
 
 log = logging.getLogger(__name__)
+
+# A progress callback. The loop already passes through every boundary worth
+# reporting; before this the caller could only see the total elapsed time and
+# infer the rest by subtraction.
+ProgressEvent = dict[str, Any]
+Progress = Callable[[ProgressEvent], None]
 
 MAX_MODEL_CALLS = 3
 # Rows handed back to the model. The API response carries the full result; the
@@ -108,6 +114,7 @@ class AgentResult:
     attempts: list[Attempt] = field(default_factory=list)
     model_calls: int = 0
     elapsed_ms: int = 0
+    model_ms: int = 0
     usage: dict[str, int] = field(default_factory=dict)
 
 
@@ -204,10 +211,13 @@ class SqlAgent:
             kwargs["output_config"] = {"effort": self._effort}
         return self._client.create(**kwargs)
 
-    def _run_tool(self, candidate: str) -> tuple[str, bool, Attempt, dict | None]:
+    def _run_tool(
+        self, candidate: str, emit: Progress
+    ) -> tuple[str, bool, Attempt, dict | None]:
         """Validate then execute one candidate. Returns the model-facing text,
         whether it errored, the audit record, and the payload on success."""
         verdict = guard.validate(candidate, max_rows=self._max_rows)
+        emit({"phase": "guard", "ok": verdict.ok, "reason": verdict.reason})
         if not verdict.ok:
             attempt = Attempt(sql=candidate, accepted=False, rejection=verdict.reason)
             return (
@@ -219,12 +229,14 @@ class SqlAgent:
             )
 
         safe_sql = verdict.sql or candidate
+        emit({"phase": "executing", "sql": safe_sql})
         started = time.perf_counter()
         try:
             with self._connection_factory() as conn:
                 columns, rows = _execute(conn, safe_sql)
         except psycopg.errors.QueryCanceled:
             attempt = Attempt(sql=safe_sql, accepted=True, error="timeout")
+            emit({"phase": "sql_failed", "message": "timeout"})
             return (
                 f"Query exceeded the {STATEMENT_TIMEOUT} time limit. Narrow the "
                 "date range, aggregate more, or add a tighter filter.",
@@ -235,6 +247,7 @@ class SqlAgent:
             # knowing about: the two allowlists have drifted.
             log.error("guard/grant mismatch — guard passed SQL the role cannot run: %s", exc)
             attempt = Attempt(sql=safe_sql, accepted=True, error="insufficient privilege")
+            emit({"phase": "sql_failed", "message": "insufficient privilege"})
             return (
                 "That query touches data this role may not read. Use only the "
                 "five documented relations.",
@@ -243,9 +256,11 @@ class SqlAgent:
         except psycopg.Error as exc:
             message = str(exc).splitlines()[0][:300]
             attempt = Attempt(sql=safe_sql, accepted=True, error=message)
+            emit({"phase": "sql_failed", "message": message})
             return f"The database rejected the query: {message}", True, attempt, None
 
         elapsed = int((time.perf_counter() - started) * 1000)
+        emit({"phase": "rows", "row_count": len(rows), "ms": elapsed})
         attempt = Attempt(
             sql=safe_sql, accepted=True, row_count=len(rows), elapsed_ms=elapsed
         )
@@ -256,17 +271,49 @@ class SqlAgent:
         }
         return _render_for_model(columns, rows), False, attempt, payload
 
-    def answer(self, question: str) -> AgentResult:
+    def answer(
+        self,
+        question: str,
+        *,
+        history: Iterable[dict[str, str]] = (),
+        on_event: Progress | None = None,
+    ) -> AgentResult:
+        """Answer one question, optionally in the context of prior turns.
+
+        `history` is a sequence of {"role", "content"} dicts, oldest first, and
+        is trusted to have been bounded by the caller - `QueryRequest` does it.
+        Prior assistant turns are prose, not tool_use blocks, so replaying a
+        conversation costs a fraction of what re-running its queries would.
+        """
+
+        def emit(event: ProgressEvent) -> None:
+            if on_event is None:
+                return
+            try:
+                on_event(event)
+            except Exception:  # noqa: BLE001
+                # A consumer that has hung up must not take the agent with it;
+                # the answer is still worth finishing and logging.
+                log.warning("progress consumer raised; continuing", exc_info=True)
+
         started = time.perf_counter()
-        messages: list[dict] = [{"role": "user", "content": question}]
+        messages: list[dict] = [
+            {"role": turn["role"], "content": turn["content"]} for turn in history
+        ]
+        messages.append({"role": "user", "content": question})
         attempts: list[Attempt] = []
         last_payload: dict | None = None
         usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0}
         calls = 0
+        model_ms = 0
         answer_text = ""
 
         for _ in range(MAX_MODEL_CALLS):
+            emit({"phase": "thinking", "call": calls + 1, "of": MAX_MODEL_CALLS})
+            call_started = time.perf_counter()
             response = self._call_model(messages)
+            call_ms = int((time.perf_counter() - call_started) * 1000)
+            model_ms += call_ms
             calls += 1
 
             for key in usage:
@@ -281,14 +328,39 @@ class SqlAgent:
 
             text_parts = [b.text for b in response.content if b.type == "text"]
             tool_uses = [b for b in response.content if b.type == "tool_use"]
+            emit({
+                "phase": "thought",
+                "call": calls,
+                "ms": call_ms,
+                "tool_calls": len(tool_uses),
+            })
 
             if not tool_uses:
                 answer_text = "\n".join(t.strip() for t in text_parts if t.strip())
+
+                # Neither a tool call nor any text. Seen in the wild against a
+                # gateway-hosted Llama: one call returned an empty content list
+                # and the loop returned "the model returned no answer text",
+                # having spent a paid call and two remaining ones it never used.
+                # An empty turn carries no information to feed back, so the
+                # question is simply put again.
+                if not answer_text and calls < MAX_MODEL_CALLS:
+                    emit({"phase": "retrying", "reason": "empty response"})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "You returned an empty response. Answer the question "
+                            "above, using the run_sql tool if you need data."
+                        ),
+                    })
+                    continue
+
                 # Some models emit the tool call as literal text instead of a
                 # tool_use block. Returning that verbatim would show the user
                 # raw function-call syntax as though it were an answer, so nudge
                 # once and only give up if it happens again.
                 if _looks_like_leaked_tool_call(answer_text) and calls < MAX_MODEL_CALLS:
+                    emit({"phase": "retrying", "reason": "tool call written as text"})
                     messages.append({"role": "assistant", "content": answer_text})
                     messages.append({
                         "role": "user",
@@ -306,7 +378,8 @@ class SqlAgent:
             results = []
             for block in tool_uses:
                 candidate = (block.input or {}).get("sql", "")
-                rendered, is_error, attempt, payload = self._run_tool(candidate)
+                emit({"phase": "sql", "sql": candidate})
+                rendered, is_error, attempt, payload = self._run_tool(candidate, emit)
                 attempts.append(attempt)
                 if payload is not None:
                     last_payload = payload
@@ -326,6 +399,7 @@ class SqlAgent:
 
         rows = last_payload["rows"] if last_payload else []
         truncated = len(rows) >= self._max_rows
+        emit({"phase": "answering"})
         return AgentResult(
             question=question,
             answer=answer_text or "The model returned no answer text.",
@@ -337,5 +411,6 @@ class SqlAgent:
             attempts=attempts,
             model_calls=calls,
             elapsed_ms=int((time.perf_counter() - started) * 1000),
+            model_ms=model_ms,
             usage=usage,
         )

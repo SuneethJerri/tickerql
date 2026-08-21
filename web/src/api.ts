@@ -118,8 +118,31 @@ export interface QueryResponse {
   model: string;
   model_calls: number;
   elapsed_ms: number;
+  model_ms: number;
   usage: Record<string, number>;
 }
+
+export interface Turn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/** One progress report from POST /api/query/stream. These are the real
+ *  boundaries of the agent loop, not a timer: `thinking` is a model call in
+ *  flight, `guard` is the validator's verdict on a candidate statement. */
+export type StreamEvent =
+  | { phase: "accepted"; question: string }
+  | { phase: "thinking"; call: number; of: number }
+  | { phase: "thought"; call: number; ms: number; tool_calls: number }
+  | { phase: "sql"; sql: string }
+  | { phase: "guard"; ok: boolean; reason: string | null }
+  | { phase: "executing"; sql: string }
+  | { phase: "rows"; row_count: number; ms: number }
+  | { phase: "sql_failed"; message: string }
+  | { phase: "retrying"; reason: string }
+  | { phase: "answering" }
+  | { phase: "done"; result: QueryResponse }
+  | { phase: "error"; status: number; detail: string };
 
 export interface Health {
   status: "ok" | "degraded";
@@ -186,12 +209,81 @@ export const api = {
       `/api/analytics/moving-averages/${encodeURIComponent(ticker)}` +
         `?windows=${windows.join(",")}&window=${window}`,
     ),
-  query: (question: string) =>
+  query: (question: string, history: Turn[] = []) =>
     request<QueryResponse>("/api/query", {
       method: "POST",
-      body: JSON.stringify({ question }),
+      body: JSON.stringify({ question, history }),
     }),
+  queryStream,
 };
+
+/** POST /api/query/stream, reported event by event.
+ *
+ * EventSource cannot do this: it is GET-only and cannot send a body, and the
+ * question plus its history is a body. So the SSE framing is parsed by hand off
+ * the fetch body reader - which is about fifteen lines and avoids inventing a
+ * GET route that takes a conversation in the query string.
+ *
+ * Errors arrive two ways and both are mapped to ApiError, so a caller never has
+ * to care which: as a status code before the stream opens (401, 429, 422, 503),
+ * and as a terminal `error` event once it has (the model call failed, mid-way).
+ */
+async function queryStream(
+  question: string,
+  history: Turn[],
+  onEvent: (event: StreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<QueryResponse> {
+  const response = await fetch(`${BASE}/api/query/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, history }),
+    signal,
+  });
+
+  if (!response.ok) {
+    let detail = `${response.status} ${response.statusText}`;
+    try {
+      const body = await response.json();
+      if (typeof body.detail === "string") detail = body.detail;
+      else if (Array.isArray(body.detail) && body.detail[0]?.msg) detail = body.detail[0].msg;
+    } catch {
+      /* non-JSON error body; keep the status line */
+    }
+    throw new ApiError(response.status, detail);
+  }
+  if (!response.body) throw new ApiError(502, "The server sent no response body.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  // SSE frames are separated by a blank line and a frame can straddle two
+  // chunks, so the tail stays buffered until its terminator arrives.
+  let buffer = "";
+  let result: QueryResponse | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let split: number;
+    while ((split = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, split);
+      buffer = buffer.slice(split + 2);
+      for (const line of frame.split("\n")) {
+        // Lines opening with ':' are comments — the keep-alive heartbeat.
+        if (!line.startsWith("data: ")) continue;
+        const event = JSON.parse(line.slice(6)) as StreamEvent;
+        if (event.phase === "error") throw new ApiError(event.status, event.detail);
+        if (event.phase === "done") result = event.result;
+        onEvent(event);
+      }
+    }
+  }
+
+  if (!result) throw new ApiError(502, "The stream ended before an answer arrived.");
+  return result;
+}
 
 /** Formatting helpers. Returns and drawdowns arrive as fractions. */
 export const fmtPct = (v: number | null | undefined, digits = 1) =>

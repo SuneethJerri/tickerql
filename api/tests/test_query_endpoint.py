@@ -112,7 +112,10 @@ def test_agent_failure_maps_to_502_without_leaking_internals(
     from app.routers import query as query_router
 
     class Exploding:
-        def answer(self, question):
+        # **kwargs, not a bare (self, question): the router now passes history=,
+        # so a narrow signature would raise TypeError and this test would pass
+        # on the wrong exception without ever reaching the agent.
+        def answer(self, question, **kwargs):
             raise RuntimeError("upstream connection reset: key sk-ant-secret")
 
     monkeypatch.setattr(query_router, "_build_agent", lambda: Exploding())

@@ -49,7 +49,10 @@ app.add_middleware(
     allow_origins=_settings.cors_origin_list,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    # X-API-Key is listed because /api/query can require a shared secret. Left
+    # off, enabling that secret would work from curl and fail in every browser
+    # on the preflight, which reads as a CORS bug rather than an auth setting.
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 app.include_router(analytics.router)

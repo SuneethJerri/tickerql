@@ -7,14 +7,19 @@ This is the only route that executes SQL it did not author. It runs through
 
 from __future__ import annotations
 
+import json
 import logging
+import queue
+import threading
 from dataclasses import asdict
+from typing import Any, Iterator
 
 import secrets
 
 from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi.responses import StreamingResponse
 
-from app.agent.runner import AgentRefused, AgentUnavailable, SqlAgent
+from app.agent.runner import AgentRefused, AgentUnavailable, AgentResult, SqlAgent
 from app.config import get_settings
 from app.db import agent_connection
 from app.models import QueryAttempt, QueryRequest, QueryResponse
@@ -23,6 +28,11 @@ from app.ratelimit import SlidingWindowLimiter, client_key
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["agent"])
+
+# How long the stream waits on the agent before emitting an SSE comment. Model
+# calls routinely run past 30s, and a connection that sends nothing for that
+# long is one an intermediate proxy may decide to close.
+HEARTBEAT_SECONDS = 10.0
 
 _settings = get_settings()
 _limiter = SlidingWindowLimiter(
@@ -90,6 +100,24 @@ def _build_agent() -> SqlAgent:
     )
 
 
+def _to_response(result: AgentResult) -> QueryResponse:
+    return QueryResponse(
+        question=result.question,
+        answer=result.answer,
+        sql=result.sql,
+        columns=result.columns,
+        rows=result.rows,
+        row_count=result.row_count,
+        truncated=result.truncated,
+        attempts=[QueryAttempt(**asdict(a)) for a in result.attempts],
+        model=get_settings().anthropic_model,
+        model_calls=result.model_calls,
+        elapsed_ms=result.elapsed_ms,
+        model_ms=result.model_ms,
+        usage=result.usage,
+    )
+
+
 @router.post("/query", response_model=QueryResponse)
 def natural_language_query(
     payload: QueryRequest,
@@ -111,7 +139,10 @@ def natural_language_query(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     try:
-        result = agent.answer(payload.question.strip())
+        result = agent.answer(
+            payload.question.strip(),
+            history=[t.model_dump() for t in payload.history],
+        )
     except AgentRefused as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
@@ -120,17 +151,86 @@ def natural_language_query(
             status_code=502, detail="The language model call failed."
         ) from exc
 
-    return QueryResponse(
-        question=result.question,
-        answer=result.answer,
-        sql=result.sql,
-        columns=result.columns,
-        rows=result.rows,
-        row_count=result.row_count,
-        truncated=result.truncated,
-        attempts=[QueryAttempt(**asdict(a)) for a in result.attempts],
-        model=get_settings().anthropic_model,
-        model_calls=result.model_calls,
-        elapsed_ms=result.elapsed_ms,
-        usage=result.usage,
+    return _to_response(result)
+
+
+def _sse(event: dict[str, Any]) -> str:
+    return f"data: {json.dumps(event, default=str)}\n\n"
+
+
+@router.post("/query/stream")
+def natural_language_query_stream(
+    payload: QueryRequest,
+    request: Request,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+) -> StreamingResponse:
+    """The same answer as POST /api/query, reported as it happens.
+
+    Server-sent events, one JSON object per `data:` line, each carrying a
+    `phase`. The terminal event is `done` (with the full QueryResponse) or
+    `error`. The client can render the identical result from either route.
+
+    Auth and rate limiting run BEFORE the response starts, deliberately: once a
+    200 and the SSE headers are on the wire there is no status code left to
+    send, and an error delivered inside the stream is much easier to miss.
+    """
+    _enforce_limits(request, x_api_key)
+
+    try:
+        agent = _build_agent()
+    except AgentUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    question = payload.question.strip()
+    history = [t.model_dump() for t in payload.history]
+
+    def generate() -> Iterator[str]:
+        # The agent loop is blocking and synchronous. It runs on its own thread
+        # and reports through a queue, so a slow model call cannot stop the
+        # heartbeat and the stream stays writable throughout.
+        events: queue.Queue[dict[str, Any] | None] = queue.Queue()
+
+        def run() -> None:
+            try:
+                result = agent.answer(question, history=history, on_event=events.put)
+                events.put({
+                    "phase": "done",
+                    "result": _to_response(result).model_dump(mode="json"),
+                })
+            except AgentRefused as exc:
+                events.put({"phase": "error", "status": 422, "detail": str(exc)})
+            except Exception:  # noqa: BLE001
+                log.exception("agent failed (stream)")
+                events.put({
+                    "phase": "error",
+                    "status": 502,
+                    "detail": "The language model call failed.",
+                })
+            finally:
+                events.put(None)
+
+        worker = threading.Thread(target=run, name="sql-agent", daemon=True)
+        worker.start()
+
+        yield _sse({"phase": "accepted", "question": question})
+        while True:
+            try:
+                event = events.get(timeout=HEARTBEAT_SECONDS)
+            except queue.Empty:
+                yield ": keep-alive\n\n"
+                continue
+            if event is None:
+                break
+            yield _sse(event)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            # nginx and several CDNs buffer proxied responses by default, which
+            # turns a progress stream into one delivery at the end.
+            "X-Accel-Buffering": "no",
+        },
     )

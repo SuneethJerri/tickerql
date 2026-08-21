@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class HealthResponse(BaseModel):
@@ -128,6 +128,22 @@ class MovingAverageSeries(BaseModel):
     points: list[MovingAveragePoint]
 
 
+# Conversation memory is bounded on two axes because it is billed on two axes.
+# A turn cap alone lets one enormous pasted table through; a character cap alone
+# lets a hundred short turns through. Both are enforced, and the history is
+# TRIMMED to fit rather than rejected: a long conversation should keep working
+# with a shorter memory, not start failing.
+MAX_HISTORY_TURNS = 12
+MAX_HISTORY_CHARS = 12_000
+
+
+class Turn(BaseModel):
+    """One prior message in the conversation, as the client remembers it."""
+
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=4_000)
+
+
 class QueryRequest(BaseModel):
     question: str = Field(
         ...,
@@ -136,6 +152,33 @@ class QueryRequest(BaseModel):
         description="A natural-language question about the market data.",
         examples=["Which sector had the highest volatility last year?"],
     )
+    history: list[Turn] = Field(
+        default_factory=list,
+        description=(
+            "Prior turns, oldest first, so follow-up questions can refer back. "
+            f"Trimmed to the most recent {MAX_HISTORY_TURNS} turns and "
+            f"{MAX_HISTORY_CHARS} characters."
+        ),
+    )
+
+    @field_validator("history")
+    @classmethod
+    def _bound_history(cls, turns: list[Turn]) -> list[Turn]:
+        kept: list[Turn] = []
+        budget = MAX_HISTORY_CHARS
+        # Walk backwards: the turns nearest the question are the ones a
+        # follow-up is most likely to be referring to.
+        for turn in reversed(turns[-MAX_HISTORY_TURNS:]):
+            budget -= len(turn.content)
+            if budget < 0:
+                break
+            kept.append(turn)
+        kept.reverse()
+        # The Messages API requires the conversation to open with a user turn,
+        # and trimming can easily cut one off mid-exchange.
+        while kept and kept[0].role != "user":
+            kept.pop(0)
+        return kept
 
 
 class QueryAttempt(BaseModel):
@@ -166,4 +209,7 @@ class QueryResponse(BaseModel):
     model: str
     model_calls: int
     elapsed_ms: int
+    model_ms: int = Field(
+        0, description="Time spent waiting on the model, of elapsed_ms."
+    )
     usage: dict[str, int] = Field(default_factory=dict)

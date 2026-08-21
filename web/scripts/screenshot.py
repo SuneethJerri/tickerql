@@ -56,23 +56,57 @@ SEED = """<script>
     if (a) localStorage.setItem('accent', a); else localStorage.removeItem('accent');
   } catch (e) {}
   var tab = q.get('__tab');
-  if (!tab || tab === 'Dashboard') return;
+  var ask = q.get('__ask');
+  if ((!tab || tab === 'Dashboard') && !ask) return;
   var tries = 0;
   var timer = setInterval(function () {
     var buttons = document.querySelectorAll('.nav button');
     for (var i = 0; i < buttons.length; i++) {
-      if (buttons[i].textContent.trim() === tab) {
+      if (buttons[i].textContent.trim() === (tab || 'Dashboard')) {
         buttons[i].click();
         clearInterval(timer);
+        if (ask) setTimeout(function () { submitQuestion(ask); }, 60);
         return;
       }
     }
     if (++tries > 200) clearInterval(timer);
   }, 25);
+
+  // The textarea is a controlled React input, so assigning .value directly is
+  // reverted on the next render. Going through the prototype setter is what
+  // makes React's onChange see the new value.
+  function submitQuestion(text) {
+    var box = document.querySelector('.ask-form textarea');
+    if (!box) return;
+    var setter = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype, 'value'
+    ).set;
+    setter.call(box, text);
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    setTimeout(function () {
+      var form = box.closest('form');
+      if (form) form.requestSubmit();
+    }, 30);
+  }
 })();
 </script>"""
 
 HOLD = '<img src="/__hold" alt="" width="1" height="1" style="position:absolute;opacity:0">'
+
+
+def content_type(headers: dict) -> str:
+    """Case-insensitive Content-Type lookup.
+
+    dict(response.headers) keeps whatever casing the origin sent. uvicorn sends
+    `content-type`; vite sends `Content-Type`. A plain headers["Content-Type"]
+    therefore matched the HTML and missed every SSE response, so the stream
+    branch below was silently never taken and every progress screenshot showed
+    "Connecting...". The failure looked exactly like a bug in the app.
+    """
+    for name, value in headers.items():
+        if name.lower() == "content-type":
+            return value
+    return ""
 
 
 def make_handler(upstream: str, hold_seconds: float):
@@ -112,22 +146,29 @@ def make_handler(upstream: str, hold_seconds: float):
                 if name.lower() not in ("host", "accept-encoding", "connection"):
                     request.add_header(name, value)
             try:
-                with urllib.request.urlopen(request) as response:
-                    body = response.read()
-                    headers = dict(response.headers)
-                    status = response.status
+                response = urllib.request.urlopen(request)
             except urllib.error.HTTPError as exc:
-                body, headers, status = exc.read(), dict(exc.headers), exc.code
+                self._respond(exc.code, dict(exc.headers), exc.read())
+                return
             except OSError as exc:
                 self.send_error(502, str(exc))
                 return
 
-            if "text/html" in headers.get("Content-Type", ""):
+            with response:
+                headers = dict(response.headers)
+                if "text/event-stream" in content_type(headers):
+                    self._relay_stream(response.status, headers, response)
+                    return
+                body = response.read()
+
+            if "text/html" in content_type(headers):
                 text = body.decode("utf-8")
                 text = text.replace("<head>", "<head>" + SEED, 1)
                 text = text.replace("</body>", HOLD + "</body>", 1)
                 body = text.encode("utf-8")
+            self._respond(response.status, headers, body)
 
+        def _respond(self, status: int, headers: dict, body: bytes) -> None:
             self.send_response(status)
             for name, value in headers.items():
                 if name.lower() in ("content-length", "transfer-encoding", "connection"):
@@ -136,6 +177,36 @@ def make_handler(upstream: str, hold_seconds: float):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _relay_stream(self, status: int, headers: dict, response) -> None:
+            """Forward an SSE body as it arrives.
+
+            Buffering this is what the first version did - one read() of the
+            whole body - and it made the progress stream invisible in every
+            screenshot: the page sat on "Connecting..." until the answer landed
+            and then jumped straight to it. Which is precisely the bug this
+            harness exists to catch, so the harness has to not have it.
+            """
+            self.send_response(status)
+            for name, value in headers.items():
+                if name.lower() in ("content-length", "transfer-encoding", "connection"):
+                    continue
+                self.send_header(name, value)
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+            try:
+                while True:
+                    chunk = response.read1(4096) if hasattr(response, "read1") else response.read(4096)
+                    if not chunk:
+                        break
+                    self.wfile.write(f"{len(chunk):x}\r\n".encode())
+                    self.wfile.write(chunk)
+                    self.wfile.write(b"\r\n")
+                    self.wfile.flush()
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     return Handler
 
@@ -156,6 +227,10 @@ def main() -> int:
     parser.add_argument("--themes", default=",".join(THEMES))
     parser.add_argument("--tabs", default=",".join(TABS))
     parser.add_argument("--accent", default="blue")
+    parser.add_argument(
+        "--ask",
+        help="Type this question into the Ask form and submit it before shooting.",
+    )
     parser.add_argument("--browser", default="zen-browser")
     args = parser.parse_args()
 
@@ -172,9 +247,10 @@ def main() -> int:
     try:
         for theme in args.themes.split(","):
             for tab in args.tabs.split(","):
-                query = urllib.parse.urlencode(
-                    {"__theme": theme, "__accent": args.accent, "__tab": tab}
-                )
+                params = {"__theme": theme, "__accent": args.accent, "__tab": tab}
+                if args.ask and tab == "Ask":
+                    params["__ask"] = args.ask
+                query = urllib.parse.urlencode(params)
                 slug = tab.lower().replace(" ", "-")
                 out = args.out / f"{theme}--{slug}.png"
                 url = f"http://127.0.0.1:{args.port}/?{query}"

@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { ApiError, api, type QueryResponse } from "../api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiError, api, type QueryResponse, type StreamEvent, type Turn } from "../api";
+import { Markdown } from "../components/Markdown";
 import { Card } from "../components/ui";
 
 const SUGGESTIONS = [
@@ -11,85 +11,287 @@ const SUGGESTIONS = [
   "Did crypto outperform equities over the last 30 days?",
 ];
 
+/** Rows rendered in the result table. The API returns up to `max_rows`; showing
+ *  every one of a thousand-row result inside a chat turn buries the answer. */
+const ROW_DISPLAY_CAP = 50;
+
+interface Exchange {
+  id: number;
+  question: string;
+  /** Present once the answer arrives; null while the turn is still running. */
+  result: QueryResponse | null;
+  error: string | null;
+  events: StreamEvent[];
+  elapsedMs: number;
+}
+
 export function AskPage() {
-  const [question, setQuestion] = useState("");
-  const ask = useMutation<QueryResponse, unknown, string>({
-    mutationFn: (q: string) => api.query(q),
-  });
+  const [draft, setDraft] = useState("");
+  const [exchanges, setExchanges] = useState<Exchange[]>([]);
+  const [pending, setPending] = useState(false);
+  const abort = useRef<AbortController | null>(null);
+  const transcriptEnd = useRef<HTMLDivElement | null>(null);
 
-  const submit = (q: string) => {
-    const trimmed = q.trim();
-    if (trimmed.length < 3) return;
-    setQuestion(trimmed);
-    ask.mutate(trimmed);
-  };
+  useEffect(() => {
+    transcriptEnd.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  }, [exchanges.length, pending]);
 
-  const unavailable = ask.error instanceof ApiError && ask.error.status === 503;
+  // Cancel an in-flight request if the page goes away mid-answer.
+  useEffect(() => () => abort.current?.abort(), []);
+
+  const submit = useCallback(
+    async (raw: string) => {
+      const question = raw.trim();
+      if (question.length < 3 || pending) return;
+
+      // Only settled exchanges become memory. A failed turn has no answer to
+      // refer back to, and sending the question alone would leave the model
+      // looking at an unanswered user turn.
+      const history: Turn[] = exchanges
+        .filter((e) => e.result)
+        .flatMap((e) => [
+          { role: "user" as const, content: e.question },
+          { role: "assistant" as const, content: e.result!.answer },
+        ]);
+
+      const id = Date.now();
+      const startedAt = performance.now();
+      setDraft("");
+      setPending(true);
+      setExchanges((prev) => [
+        ...prev,
+        { id, question, result: null, error: null, events: [], elapsedMs: 0 },
+      ]);
+
+      const update = (patch: Partial<Exchange>) =>
+        setExchanges((prev) =>
+          prev.map((e) => (e.id === id ? { ...e, ...patch } : e)),
+        );
+
+      const controller = new AbortController();
+      abort.current = controller;
+
+      try {
+        const result = await api.queryStream(
+          question,
+          history,
+          (event) =>
+            setExchanges((prev) =>
+              prev.map((e) =>
+                e.id === id ? { ...e, events: [...e.events, event] } : e,
+              ),
+            ),
+          controller.signal,
+        );
+        update({ result, elapsedMs: Math.round(performance.now() - startedAt) });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        update({
+          error:
+            error instanceof ApiError || error instanceof Error
+              ? error.message
+              : "The request failed.",
+          elapsedMs: Math.round(performance.now() - startedAt),
+        });
+      } finally {
+        abort.current = null;
+        setPending(false);
+      }
+    },
+    [exchanges, pending],
+  );
+
+  const unavailable = exchanges.some(
+    (e) => e.error?.includes("ANTHROPIC_API_KEY"),
+  );
 
   return (
     <Card
       title="Ask a question"
-      subtitle="Your question is turned into SQL and run against a database role that can only read. The generated SQL is always shown, so the answer can be checked against the query behind it."
+      subtitle="Your question is turned into SQL and run against a database role that can only read. Every step is reported as it happens, and the SQL is always shown, so the answer can be checked against the query behind it. Follow-ups can refer back to earlier turns."
     >
+      {exchanges.length > 0 && (
+        <div className="transcript">
+          {exchanges.map((exchange) => (
+            <ExchangeView key={exchange.id} exchange={exchange} />
+          ))}
+          <div ref={transcriptEnd} />
+        </div>
+      )}
+
       <form
         className="ask-form"
-        onSubmit={(e) => { e.preventDefault(); submit(question); }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit(draft);
+        }}
       >
         <textarea
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="e.g. Which sector had the best return per unit of risk?"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder={
+            exchanges.length
+              ? "Ask a follow-up…"
+              : "e.g. Which sector had the best return per unit of risk?"
+          }
           rows={2}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(question);
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void submit(draft);
+            }
           }}
         />
-        <button className="btn" type="submit" disabled={ask.isPending || question.trim().length < 3}>
-          {ask.isPending ? "Thinking…" : "Ask"}
+        <button className="btn" type="submit" disabled={pending || draft.trim().length < 3}>
+          {pending ? "Thinking…" : "Ask"}
         </button>
       </form>
 
       <div className="suggestions">
-        {SUGGESTIONS.map((s) => (
-          <button key={s} className="chip" onClick={() => submit(s)} disabled={ask.isPending}>
-            {s}
+        {exchanges.length === 0 ? (
+          SUGGESTIONS.map((s) => (
+            <button key={s} className="chip" onClick={() => void submit(s)} disabled={pending}>
+              {s}
+            </button>
+          ))
+        ) : (
+          <button className="chip" onClick={() => setExchanges([])} disabled={pending}>
+            New conversation
           </button>
-        ))}
+        )}
       </div>
 
       {unavailable && (
-        <div className="notice" style={{ marginTop: 16 }}>
+        <div className="notice ask-notice">
           <strong>Natural-language queries are not configured.</strong>
-          <div style={{ marginTop: 4 }}>{(ask.error as ApiError).message}</div>
-          <div style={{ marginTop: 8 }} className="muted">
-            Every other view on this dashboard works without it.
-          </div>
+          <div className="muted">Every other view on this dashboard works without it.</div>
         </div>
       )}
-
-      {ask.error != null && !unavailable && (
-        <div className="notice error" style={{ marginTop: 16 }}>
-          {ask.error instanceof Error ? ask.error.message : "The request failed."}
-        </div>
-      )}
-
-      {ask.data && <Answer result={ask.data} />}
     </Card>
   );
 }
 
-function Answer({ result }: { result: QueryResponse }) {
+function ExchangeView({ exchange }: { exchange: Exchange }) {
+  const running = !exchange.result && !exchange.error;
+  return (
+    <div className="exchange">
+      <div className="bubble user">{exchange.question}</div>
+      <div className="bubble assistant">
+        {running ? (
+          <Progress events={exchange.events} />
+        ) : exchange.error ? (
+          <div className="notice error">{exchange.error}</div>
+        ) : (
+          <Answer result={exchange.result!} events={exchange.events} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Live progress, driven entirely by events the backend actually emitted.
+ *
+ * The timer is the one thing computed locally, because a stream that has gone
+ * quiet still has to show time passing - that is exactly when a reader wants to
+ * know something is happening. Every *step* below corresponds to a real
+ * boundary in the agent loop. */
+function Progress({ events }: { events: StreamEvent[] }) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const startedAt = performance.now();
+    const timer = window.setInterval(
+      () => setElapsed(performance.now() - startedAt),
+      100,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const steps = describe(events);
+  const current = steps.length ? steps[steps.length - 1]! : "Connecting…";
+
+  return (
+    <div className="progress" role="status" aria-live="polite">
+      <div className="progress-head">
+        <span className="pulse" aria-hidden="true" />
+        <span className="progress-now">{current}</span>
+        <span className="progress-clock">{(elapsed / 1000).toFixed(1)}s</span>
+      </div>
+      {steps.length > 1 && (
+        <ol className="progress-steps">
+          {steps.slice(0, -1).map((step, i) => (
+            <li key={i}>{step}</li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function describe(events: StreamEvent[]): string[] {
+  const steps: string[] = [];
+  for (const event of events) {
+    switch (event.phase) {
+      case "thinking":
+        steps.push(
+          event.of > 1 && event.call > 1
+            ? `Thinking again (attempt ${event.call} of ${event.of})`
+            : "Reading the question",
+        );
+        break;
+      case "thought":
+        steps.push(`Thought for ${(event.ms / 1000).toFixed(1)}s`);
+        break;
+      case "sql":
+        steps.push("Wrote a query");
+        break;
+      case "guard":
+        steps.push(
+          event.ok
+            ? "Query passed the read-only guard"
+            : `Blocked by the guard: ${event.reason ?? "rejected"}`,
+        );
+        break;
+      case "executing":
+        steps.push("Running it against the read-only role");
+        break;
+      case "rows":
+        steps.push(
+          `${event.row_count} row${event.row_count === 1 ? "" : "s"} in ${event.ms} ms`,
+        );
+        break;
+      case "sql_failed":
+        steps.push(`The database rejected it: ${event.message}`);
+        break;
+      case "retrying":
+        steps.push(`Retrying — ${event.reason}`);
+        break;
+      case "answering":
+        steps.push("Writing the answer");
+        break;
+      default:
+        break;
+    }
+  }
+  return steps;
+}
+
+function Answer({ result, events }: { result: QueryResponse; events: StreamEvent[] }) {
   const blocked = result.attempts.filter((a) => !a.accepted);
+  const shown = result.rows.slice(0, ROW_DISPLAY_CAP);
+
   return (
     <div className="answer">
-      <p>{result.answer}</p>
+      <Markdown text={result.answer} />
 
       {/* Showing that the guard intervened is the point, not an implementation
           detail to hide — it is the visible edge of the security boundary. */}
       {blocked.length > 0 && (
-        <div className="notice" style={{ marginBottom: 12 }}>
-          <strong>{blocked.length} generated {blocked.length === 1 ? "query was" : "queries were"} blocked before reaching the database.</strong>
-          <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+        <div className="notice">
+          <strong>
+            {blocked.length} generated {blocked.length === 1 ? "query was" : "queries were"} blocked
+            before reaching the database.
+          </strong>
+          <ul>
             {blocked.map((a, i) => (
               <li key={i} className="muted">{a.rejection}</li>
             ))}
@@ -97,35 +299,75 @@ function Answer({ result }: { result: QueryResponse }) {
         </div>
       )}
 
-      {result.sql && (
-        <details className="sql" open>
-          <summary>SQL that produced this answer</summary>
-          <pre className="sql-text">{result.sql}</pre>
-        </details>
-      )}
+      {result.sql && <SqlBlock sql={result.sql} />}
 
       {result.columns.length > 0 && (
-        <table className="data">
-          <thead>
-            <tr>{result.columns.map((c) => <th key={c} scope="col">{c}</th>)}</tr>
-          </thead>
-          <tbody>
-            {result.rows.slice(0, 50).map((row, i) => (
-              <tr key={i}>
-                {row.map((cell, j) => (
-                  <td key={j}>{cell == null ? "—" : typeof cell === "number" ? cell.toLocaleString("en", { maximumFractionDigits: 4 }) : String(cell)}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="md-table-wrap">
+          <table className="data">
+            <thead>
+              <tr>{result.columns.map((c) => <th key={c} scope="col">{c}</th>)}</tr>
+            </thead>
+            <tbody>
+              {shown.map((row, i) => (
+                <tr key={i}>
+                  {row.map((cell, j) => (
+                    <td key={j}>
+                      {cell == null
+                        ? "—"
+                        : typeof cell === "number"
+                          ? cell.toLocaleString("en", { maximumFractionDigits: 4 })
+                          : String(cell)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <p className="muted" style={{ marginTop: 10, fontSize: 12.5 }}>
+      <details className="steps">
+        <summary>How this was answered</summary>
+        <ol className="progress-steps">
+          {describe(events).map((step, i) => (
+            <li key={i}>{step}</li>
+          ))}
+        </ol>
+      </details>
+
+      <p className="muted answer-meta">
         {result.row_count} row{result.row_count === 1 ? "" : "s"}
-        {result.truncated && " (capped)"} · {result.model_calls} model call
-        {result.model_calls === 1 ? "" : "s"} · {result.elapsed_ms} ms
+        {result.row_count > shown.length && ` · ${shown.length} shown`}
+        {result.truncated && " · capped by the API"} · {result.model_calls} model call
+        {result.model_calls === 1 ? "" : "s"} · {(result.model_ms / 1000).toFixed(1)}s thinking
+        of {(result.elapsed_ms / 1000).toFixed(1)}s total
       </p>
     </div>
+  );
+}
+
+function SqlBlock({ sql }: { sql: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <details className="sql" open>
+      <summary>
+        SQL that produced this answer
+        <button
+          type="button"
+          className="chip copy"
+          onClick={(e) => {
+            // The summary is a toggle; copying should not also collapse it.
+            e.preventDefault();
+            void navigator.clipboard?.writeText(sql).then(() => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1500);
+            });
+          }}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </summary>
+      <pre className="sql-text">{sql}</pre>
+    </details>
   );
 }

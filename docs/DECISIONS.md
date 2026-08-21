@@ -1482,3 +1482,108 @@ the new one.
 | Typecheck / build | `tsc -b --noEmit` clean; `vite build` clean |
 | Mutation test | reverting the `'Technology'` few-shot fails the new test; restoring it passes |
 | Full suite | 227 passed |
+
+## Conversational Ask — history, streaming, rendered answers
+
+Phase 5. The Ask page was one question, one answer, rendered as raw text in a
+`<p>`, with no way to tell a slow model call from a hung one.
+
+### Decisions
+
+**D-107 · History is bounded on two axes, and trimmed rather than rejected.**
+A turn cap alone lets one enormous pasted table through; a character cap alone
+lets a hundred short turns through. `QueryRequest` enforces 12 turns and 12,000
+characters, keeping the turns nearest the question. Rejecting an over-long
+conversation would fail a request the user cannot easily fix; trimming degrades
+the memory and keeps answering. This is a cost control, and cost controls that
+only exist in the client are not controls.
+
+**D-108 · Trimming drops leading assistant turns.** Cutting to a budget lands
+mid-exchange, and the Messages API requires the conversation to open with a user
+turn. Left unhandled this fails at the model rather than at the boundary, and
+only for conversations long enough to trim - so it would have shipped.
+
+**D-109 · Prior turns are replayed as prose, not as tool_use blocks.** An
+assistant turn in the history is its final answer text. Replaying the tool calls
+would re-send every result table the conversation has ever produced.
+
+**D-110 · Progress comes from the agent loop, not from a timer.** `answer()`
+takes an `on_event` callback and emits at the boundaries it already passes
+through: model call started and finished, candidate SQL produced, guard verdict,
+statement executing, rows returned. The frontend renders those and computes only
+the elapsed clock locally - a spinner that invents phases on a timer is the
+usual version of this feature and it lies whenever the model is slow.
+
+**D-111 · The stream is SSE over POST, parsed by hand.** `EventSource` is
+GET-only and cannot carry a body, and the body here is a question plus its
+history. Inventing a GET route that takes a conversation in the query string
+would be worse than fifteen lines of frame parsing.
+
+**D-112 · Auth and rate limiting run before the response starts.** Once a 200
+and the SSE headers are on the wire there is no status code left to send. Both
+`/api/query` and `/api/query/stream` call `_enforce_limits` first; a second,
+unlimited door to the same agent would make the limit decorative.
+
+**D-113 · The agent runs on its own thread behind a queue.** The loop is
+blocking and synchronous. Running it inline would stall the generator for the
+whole model call, so nothing - not even the 10-second keep-alive - could be
+written. `X-Accel-Buffering: no` is set because nginx and several CDNs buffer
+proxied responses by default, which turns a progress stream into one delivery at
+the end.
+
+**D-114 · A progress consumer that raises is swallowed.** The consumer is a
+client that can hang up mid-answer. Letting it propagate would abandon a model
+call already paid for and lose the audit record with it.
+
+**D-115 · Markdown is rendered by 160 lines here, not by react-markdown.**
+The dependency plus remark-gfm is roughly 100 kB for six constructs, on a bundle
+already past the Vite size warning. The renderer builds React elements and never
+touches `dangerouslySetInnerHTML`, so model output cannot inject markup whatever
+it returns.
+
+**D-116 · Only settled exchanges become history.** A failed turn has no answer
+to refer back to, and sending its question alone would leave the model looking
+at an unanswered user turn.
+
+**D-117 · `X-API-Key` was added to the CORS allowlist.** `allow_headers` listed
+only `Content-Type`, so enabling the shared secret would have worked from curl
+and failed in every browser on the preflight - presenting as a CORS bug rather
+than as the auth setting it is.
+
+### Mistakes
+
+**M-56 · The agent gave up on an empty model response.** Observed live against
+the gateway-hosted Llama: one call returned an empty content list, and the loop
+returned "The model returned no answer text" having spent one paid call and left
+two unused. An empty turn carries nothing to feed back, so the question is now
+simply put again, once. Found by running the thing, not by a test.
+
+**M-57 · The screenshot harness buffered the stream it was built to observe.**
+Its proxy did one `response.read()` of the whole body, so every progress
+screenshot showed "Connecting…" and then jumped to the finished answer. The app
+looked broken and was not.
+
+**M-58 · The fix for M-57 did nothing for an hour, because of a case-sensitive
+header lookup.** The stream branch was guarded by
+`headers.get("Content-Type")` over `dict(response.headers)`, which preserves
+whatever casing the origin sent - uvicorn sends `content-type`, vite sends
+`Content-Type`. So the branch matched HTML and never matched SSE, and the
+rewritten relay was dead code. I spent that time re-reading the React state
+updates and the SSE parser, both of which were correct, because the screenshot
+was the only evidence I had and I trusted it. The lesson is the cheap one:
+before debugging the thing under test, prove the instrument works - one curl
+through the proxy would have shown it in seconds, and did, once I ran it.
+
+### Verification evidence
+
+| Check | Result |
+|---|---|
+| History bounds | 4 tests: turn cap, character cap, leading-assistant trim, all-assistant history |
+| History reaches the model | 2 unit + 1 endpoint test asserting the `messages` array sent |
+| Progress events | order pinned across `sql` → `guard` → `executing` → `rows`; a guard rejection never reaches `executing` |
+| Stream endpoint | terminal payload equals the plain route's; refusal → 422 event; explosion → 502 with no internals; 422 arrives as a status, not inside the stream |
+| Limits | 429 on the second call with `Retry-After`; 401 without the shared secret, 200 with it |
+| **Mutation tests** | 5 mutations, each failing exactly the test that covers it (leading-assistant trim, char cap, `_enforce_limits`, consumer guard, `executing` event) |
+| Live, against Neon + OpenRouter | events streamed with real gaps (0.0s → 4.1s → 7.9s → 10.2s); a follow-up resolved "them" from the prior turn with neither referent in the question |
+| Rendered | live progress and finished answers screenshotted in Light, Midnight and Graphite; a markdown table answer renders as a real table |
+| Full suite | 246 passed |
