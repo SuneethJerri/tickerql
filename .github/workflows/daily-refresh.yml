@@ -1,0 +1,123 @@
+# Nightly market-data refresh.
+#
+# Fetches the last few days of bars for every asset, upserts them, then rebuilds
+# the derived materialized views. Both steps are idempotent, so a re-run after a
+# failure is always safe — that is what makes the retry-by-hand path below sound.
+#
+# Required repository secret:
+#   NEON_DATABASE_URL - the owner role on the DIRECT (non-pooled) Neon endpoint.
+#                       REFRESH MATERIALIZED VIEW CONCURRENTLY cannot run through
+#                       the pgbouncer pooler; using the pooled URL here fails at
+#                       the refresh step after the ingestion has already written.
+name: daily-refresh
+
+on:
+  schedule:
+    # 23:00 UTC — after the US equity close (20:00/21:00 UTC depending on DST),
+    # so the day's bar is final rather than intraday. Crypto trades continuously
+    # and is unaffected. GitHub's scheduler is best-effort and can lag under
+    # load; the refresh re-fetches a 7-day window, so a skipped night self-heals
+    # on the next run rather than leaving a permanent gap.
+    - cron: "0 23 * * *"
+  workflow_dispatch:
+    inputs:
+      lookback_days:
+        description: "Days of history to re-fetch (catches restatements)"
+        required: false
+        default: "7"
+
+concurrency:
+  group: daily-refresh
+  # Never cancel a run that is mid-ingestion. Upserts are idempotent but a
+  # cancelled run leaves ingest_runs marked as started, and killing one halfway
+  # buys nothing — the next scheduled run is 24h away, not 24s.
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+      PRICE_SOURCE: yfinance
+      COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}   # optional; raises rate limits only
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: ingest/requirements.txt
+
+      - name: Fail fast if the database URL is missing
+        # Without this the run reaches `refresh`, silently falls back to the
+        # localhost default in ingest/config.py, and fails with a connection
+        # error that looks like a Neon outage rather than a missing secret.
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::NEON_DATABASE_URL secret is not set on this repository."
+            exit 1
+          fi
+
+      - name: Install ingestion package
+        # Pinned transitive versions, then the package itself without deps so
+        # pip cannot quietly upgrade anything the lockfile pinned. Editable so
+        # ingest/config.py's Path(__file__).parents[3] still resolves to the
+        # checkout root, which is where db/ lives.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r ingest/requirements.txt
+          python -m pip install -e ./ingest --no-deps
+
+      - name: Refresh prices
+        id: refresh
+        run: |
+          python -m ingest refresh \
+            --lookback-days "${{ inputs.lookback_days || '7' }}" \
+            --verbose
+
+      - name: Rebuild materialized views
+        id: views
+        run: python -m ingest refresh-views --verbose
+
+      - name: Coverage report
+        id: coverage
+        run: |
+          {
+            echo "### Data coverage after refresh"
+            echo
+            echo '```'
+            python -m ingest coverage
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Explain the failure
+        if: failure()
+        run: |
+          {
+            echo "### :x: Nightly refresh failed"
+            echo
+            echo "| Step | Outcome |"
+            echo "|---|---|"
+            echo "| Refresh prices | ${{ steps.refresh.outcome || 'skipped' }} |"
+            echo "| Rebuild views  | ${{ steps.views.outcome || 'skipped' }} |"
+            echo "| Coverage       | ${{ steps.coverage.outcome || 'skipped' }} |"
+            echo
+            echo "Both steps are idempotent — re-running this workflow is safe and"
+            echo "is the first thing to try. Use **Run workflow** on this page."
+            echo
+            echo "Common causes, in the order they actually occur:"
+            echo "- \`NEON_DATABASE_URL\` points at the **pooled** endpoint. DDL and"
+            echo "  \`REFRESH MATERIALIZED VIEW CONCURRENTLY\` require the **direct** one."
+            echo "- The Neon compute is suspended and the first connection timed out."
+            echo "  Re-run; the retry wakes it."
+            echo "- The upstream price source rate-limited this runner. The ingest CLI"
+            echo "  already backs off and honours \`Retry-After\`; if it still fails,"
+            echo "  the block is IP-level and will clear on its own."
+          } >> "$GITHUB_STEP_SUMMARY"
