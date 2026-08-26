@@ -64,16 +64,27 @@ const CATEGORICAL = {
 
 /** The one hue behind every sparkline, every small-multiple panel and the
  *  close-price line - by area the most visible colour in the app. It is the
- *  member of the theme's own set nearest ink navy, the design direction's own
- *  register, except on Midnight, whose ground IS navy: a navy lead there would
- *  be the exact failure the generator's avoid-arc exists to prevent, so it
- *  takes the member nearest amber instead. */
+ *  member of its own theme's validated set, and all five are chosen at once.
+ *
+ *  Five different families on purpose. The first version picked each theme's
+ *  lead independently against a target hue, and every target but Midnight's
+ *  was ink navy - so four of five themes drew visibly identical charts, which
+ *  is exactly the complaint the per-theme palettes were built to answer. The
+ *  eight-slot sets do all differ, but they only appear on Compare and Risk;
+ *  everything else on the page is drawn in the lead alone.
+ *
+ *  Setting five targets by hand did not fix it either: Dark's cyan and Sepia's
+ *  green came out dE 4.8 apart, which is the same chart twice. So the choice
+ *  is joint - one member per theme, 8^5 combinations searched exhaustively,
+ *  dE >= 15 between every pair as a hard floor and the per-theme target hue
+ *  deciding among what clears it. check_palettes.mjs re-measures the floor, so
+ *  "switching theme changes the chart" is a gate rather than an intention. */
 const PRIMARY = {
   light: "#1246ac",
   dark: "#22a3d0",
   midnight: "#ca7b2f",
-  graphite: "#5697e8",
-  sepia: "#346cc4",
+  graphite: "#bf649a",
+  sepia: "#76971b",
 } as const;
 
 /** Context neutrals, carrying the surface's own hue at near-zero chroma. The

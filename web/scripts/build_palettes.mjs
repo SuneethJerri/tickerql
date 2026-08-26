@@ -80,12 +80,26 @@ const AVOID_LADDER = [16, 12, 8];
  * theme's OWN set nearest a target hue, so it stays inside the validated
  * palette while being picked for how it reads rather than for where it sorted.
  *
- * The target is ink navy, which is the design direction's own register -
- * except on Midnight, whose ground IS navy. There a navy lead would be the
- * exact failure the avoid arc exists to prevent, so Midnight aims at amber
- * instead, roughly navy's complement and the classic pairing against it.
+ * The first version aimed every theme at ink navy, the design direction's own
+ * register, with Midnight excepted because its ground IS navy. That was wrong
+ * for a reason no gate caught and a user saw immediately: the eight-slot
+ * categorical sets all differ, but they only appear on Compare and Risk. The
+ * dashboard, the sector pages, the asset chart and every sparkline are drawn
+ * in the LEAD alone - so four of five themes had visibly identical charts and
+ * only Midnight looked different, which is precisely the complaint the
+ * per-theme palettes were built to answer.
+ *
+ * So the five leads are five different hue families, one per surface, and
+ * check_palettes.mjs gates them at dE >= 15 from each other. Switching theme
+ * has to change the chart, and that is now measured rather than assumed.
  */
-const LEAD_HUE = { light: 250, sepia: 250, dark: 250, midnight: 45, graphite: 250 };
+const LEAD_HUE = {
+  light: 250,     // ink navy on cool paper - the design direction's own register
+  sepia: 150,     // ledger green on cream, which is what sepia is imitating
+  dark: 200,      // cyan: the neutral near-black takes the coldest lead well
+  midnight: 45,   // amber, roughly the complement of its own navy ground
+  graphite: 320,  // magenta - the one family the other four leave alone
+};
 const DEFAULT_LEAD = 250;
 /** Per-surface knowledge the app has no use for, keyed by theme name. Anything
  *  the app already states - the surface hexes, the validator band, the accent
@@ -476,23 +490,72 @@ for (const theme of THEMES) {
     process.exitCode = 1;
     continue;
   }
-  const target = LEAD_HUE[theme.name] ?? DEFAULT_LEAD;
-  const primary = found.palette.reduce((a, b) =>
-    hueGap(hueOf(b), target) < hueGap(hueOf(a), target) ? b : a);
   out[theme.name] = {
-    ...found, primary, greys: greys(theme), diverging: diverging(theme),
+    ...found, greys: greys(theme), diverging: diverging(theme),
     sql: sqlInk(theme, found.palette),
   };
   console.error(
     `${theme.name.padEnd(9)} adjacent CVD ${found.m.cvd.toFixed(1)} / normal ${found.m.normal.toFixed(1)}   ` +
     `trio CVD ${found.t.cvd.toFixed(1)} / normal ${found.t.normal.toFixed(1)}   ` +
     `min contrast ${found.minContrast.toFixed(2)}:1 (floor ${found.floor}` +
-    `${theme.avoid != null ? `, arc ${found.arc}` : ""})  lead ${out[theme.name].primary}`,
+    `${theme.avoid != null ? `, arc ${found.arc}` : ""})`,
   );
 }
 
-const q = (a) => a.map((c) => `"${c}"`).join(", ");
 const present = THEMES.filter((t) => out[t.name]);
+chooseLeads(present);
+
+/**
+ * Pick every theme's lead hue at once, not one theme at a time.
+ *
+ * Picking them independently against a per-theme target hue is what shipped
+ * four of five themes looking identical: the targets were all navy. Setting
+ * five different targets by hand did not fix it either - Dark's cyan and
+ * Sepia's green came out dE 4.8 apart, which is the same chart twice.
+ *
+ * So this is a joint choice: one member from each theme's own validated set,
+ * maximising the SMALLEST distance between any two of them. 8^5 is 32,768
+ * combinations, so it is searched exhaustively rather than approximated. The
+ * per-theme target hue survives as a tie-break, which is enough to keep Light
+ * on navy and Midnight off it without dictating the outcome.
+ */
+function chooseLeads(themes) {
+  const options = themes.map((t) => out[t.name].palette);
+  let best = null;
+  const pick = new Array(themes.length);
+  const walk = (i) => {
+    if (i === themes.length) {
+      let worst = Infinity;
+      for (let a = 0; a < pick.length; a++)
+        for (let b = a + 1; b < pick.length; b++)
+          worst = Math.min(worst, deltaE(pick[a], pick[b]));
+      const affinity = pick.reduce(
+        (sum, hex, k) => sum - hueGap(hueOf(hex), LEAD_HUE[themes[k].name] ?? DEFAULT_LEAD) / 180,
+        0,
+      );
+      // Separation is a hard floor, not something to trade against: two themes
+      // at dE 14 draw the same chart no matter how well each suits its own
+      // surface. Above the floor, extra separation buys nothing a reader can
+      // see, so the choice among feasible combinations goes to the per-theme
+      // target hue - which is what keeps Light on navy rather than handing it
+      // the magenta that happened to sit furthest from everything else.
+      if (worst < NORMAL_MIN) return;
+      const score = affinity * 100 + worst;
+      if (!best || score > best.score) best = { score, worst, leads: [...pick] };
+      return;
+    }
+    for (const hex of options[i]) {
+      pick[i] = hex;
+      walk(i + 1);
+    }
+  };
+  walk(0);
+  if (!best) throw new Error(`no set of leads clears dE ${NORMAL_MIN} from each other`);
+  themes.forEach((t, i) => { out[t.name].primary = best.leads[i]; });
+  console.error(`leads     closest pair dE ${best.worst.toFixed(1)}  ${best.leads.join(" ")}`);
+}
+
+const q = (a) => a.map((c) => `"${c}"`).join(", ");
 console.log("// generated by web/scripts/build_palettes.mjs — do not hand-edit");
 console.log("const CATEGORICAL = {");
 for (const t of present) console.log(`  ${t.name}: [${q(out[t.name].palette)}],`);

@@ -176,6 +176,34 @@ for (const table_ of ["PRIMARY", "CONTEXT_GREYS", "DIVERGING"]) {
   }
 }
 
+// The lead hue is what the dashboard, the sector pages, the asset chart and
+// every sparkline are drawn in - by area the most visible colour in the app,
+// and for most views the ONLY series colour on screen. If two themes share it
+// they have the same charts whatever their eight-slot sets say, which is how
+// four of five themes shipped looking identical.
+const leadBlock = /const PRIMARY = \{([\s\S]*?)\n\} as const;/.exec(source);
+const leads = leadBlock
+  ? Object.fromEntries([...leadBlock[1].matchAll(/^\s*(\w+):\s*"(#[0-9a-fA-F]{6})"/gm)].map((m) => [m[1], m[2]]))
+  : {};
+const leadNames = Object.keys(leads);
+for (let i = 0; i < leadNames.length; i++) {
+  for (let j = i + 1; j < leadNames.length; j++) {
+    const [a, b] = [leadNames[i], leadNames[j]];
+    const d = deltaE(leads[a], leads[b]);
+    if (d < NORMAL_MIN) {
+      console.log(`LEADS   ${a} ${leads[a]} and ${b} ${leads[b]} are only dE ${d.toFixed(1)} apart — those two themes draw the same chart`);
+      failed = true;
+    }
+  }
+}
+{
+  const pairs = [];
+  for (let i = 0; i < leadNames.length; i++)
+    for (let j = i + 1; j < leadNames.length; j++)
+      pairs.push(deltaE(leads[leadNames[i]], leads[leadNames[j]]));
+  if (pairs.length) console.log(`leads   ${leadNames.length} distinct, closest pair dE ${Math.min(...pairs).toFixed(1)}`);
+}
+
 // theme.ts carries the surfaces and the accent hexes so the generator can read
 // them; styles.css carries them because that is what paints the page. Neither
 // can import the other, so the only thing keeping them honest is this.
