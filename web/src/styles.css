@@ -452,6 +452,11 @@ body {
 /* Hairline rules above and below, no box. A rule is a bound; a box is a
  * container, and this strip is not holding anything in. */
 .masthead .meta {
+  /* A wrapping row of non-breaking facts, not one long string: a narrow screen
+     then breaks between facts instead of orphaning a separator at the start of
+     a line or splitting "105,930 bars" across two. */
+  display: flex; flex-wrap: wrap; align-items: baseline;
+  gap: 0 var(--space-3);
   font-family: var(--font-display);
   font-size: var(--text-xs); font-weight: 300;
   letter-spacing: 0.12em; text-transform: uppercase;
@@ -460,6 +465,13 @@ body {
   border-bottom: 1px solid var(--border);
   padding: var(--space-3) 0;
   font-variant-numeric: tabular-nums;
+}
+.masthead .meta > span { white-space: nowrap; }
+/* The separator hangs off the END of the fact before it, not the start of the
+   fact after. Attached to the following item it wraps with it, and a line that
+   begins with a lone "·" is how the first version of this looked on a phone. */
+.masthead .meta > span:not(:last-child)::after {
+  content: "·"; margin-left: var(--space-3); color: var(--border-strong);
 }
 
 /* ---------- readout strip ---------- */
@@ -980,6 +992,16 @@ pre.sql-text[data-guard="blocked"] { border-left-color: var(--critical); }
     border-top: 1px solid var(--border);
   }
   .readout .stat:first-child { border-top: none; }
+
+  /* Nineteen sectors stacked one to a row is a very long scroll for a grid
+     whose whole argument is that you can compare panels at a glance. Two
+     columns fits 390px once the minimum comes down, and halves the page. */
+  .small-multiples { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+
+  /* Four figures at desktop rhythm is most of a phone screen before any data
+     appears. */
+  .readout .stat { padding-top: var(--space-3); padding-bottom: var(--space-3); }
+  .readout { margin-bottom: var(--space-4); }
 
   /* A table inside a scroll container still honours width: 100%, so it
      squeezes to the viewport instead of scrolling - "Marathon Petroleum

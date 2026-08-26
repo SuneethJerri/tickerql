@@ -52,13 +52,16 @@ export function Dashboard({ theme }: { theme: ThemeName }) {
           what lets this be loud without the page shouting throughout. */}
       <header className="masthead">
         <h1>tickerql</h1>
+        {/* Each fact is its own non-breaking span, separator included, so a
+            narrow screen wraps BETWEEN facts rather than orphaning a "·" at
+            the start of a line or splitting "105,930 bars" across two. */}
         <div className="meta">
-          {assets.data ? `${assets.data.length} assets` : "— assets"}
-          {sectorCount ? ` · ${sectorCount} sectors` : ""}
+          <span>{assets.data ? `${assets.data.length} assets` : "— assets"}</span>
+          {sectorCount ? <span>{`${sectorCount} sectors`}</span> : null}
           {health.data?.price_rows
-            ? ` · ${health.data.price_rows.toLocaleString("en")} bars`
-            : ""}
-          {health.data?.latest_bar ? ` · to ${health.data.latest_bar}` : ""}
+            ? <span>{`${health.data.price_rows.toLocaleString("en")} bars`}</span>
+            : null}
+          {health.data?.latest_bar ? <span>{`to ${health.data.latest_bar}`}</span> : null}
         </div>
       </header>
 
