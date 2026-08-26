@@ -141,6 +141,14 @@ def _pct(v: float, digits: int = 1) -> str:
     return f"{v * 100:.{digits}f}%"
 
 
+def _ordinal(n: int) -> str:
+    """1 -> 1st. Used for the risk-adjusted rank in insight 4, which was a
+    nested ternary long enough to hide a bug."""
+    if 10 <= n % 100 <= 20:
+        return f"{n}th"
+    return f"{n}{ {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th') }"
+
+
 def render_markdown(d: dict) -> str:
     ranked = d["ranked"]
     hi, lo, ratio = d["overall_pair"]
@@ -157,104 +165,111 @@ def render_markdown(d: dict) -> str:
     min_lose = best_loser["dd_per_vol"]
     # State the separation only if it actually holds. If a future refresh makes
     # the groups overlap, this says so instead of asserting a false claim.
-    sep_note = (
-        f" — the gap runs from {max_win:.2f} to {min_lose:.2f}"
-        if max_win < min_lose
-        else " only partially in this window (the ranges now overlap)"
+    separated = max_win < min_lose
+    sep_lede = (
+        "the groups separate by outcome rather than by asset class"
+        if separated
+        else "the split tracks outcome more than asset class, though the two "
+        "ranges overlap in this window"
     )
-    equity_losers = [r for r in losers_ if r["asset_type"] == "stock"]
-    equity_loser = equity_losers[0]["ticker"] if equity_losers else "—"
-    equity_loser_ret = equity_losers[0]["total_return"] if equity_losers else 0.0
-    # How the equity loser ranks against the crypto assets on this measure.
-    # Counted rather than asserted: an earlier draft claimed "above two of the
-    # three" when it was above one and tied with another.
-    crypto_dd = sorted(r["dd_per_vol"] for r in d["risk"] if r["asset_type"] == "crypto")
+    sep_note = f", and the ranges do not meet" if separated else ""
+    # The shallowest loser only makes the point if it lost something worth
+    # naming. An earlier run picked an asset that finished at -0.0%, which read
+    # as "an equity that lost only nothing".
+    equity_losers = [
+        r
+        for r in losers_
+        if r["asset_type"] == "stock" and r["total_return"] < -0.01
+    ]
+    equity_note = ""
     if equity_losers:
-        beaten = sum(1 for v in crypto_dd if v < equity_losers[0]["dd_per_vol"] - 1e-9)
-        equity_loser_rank = (
-            f"deeper on this measure than {beaten} of the {len(crypto_dd)} crypto assets"
-            if beaten
-            else f"level with the crypto assets on this measure"
+        el = equity_losers[0]
+        equity_note = (
+            f" {el['ticker']} is an equity that lost only "
+            f"{_pct(el['total_return'])} and still lands in the second group."
         )
-    else:
-        equity_loser_rank = ""
+
+    # Sectors ranked by return per unit of risk. The full 19-row list used to be
+    # inlined as prose, which was unreadable; the ends are what carry the point.
+    by_ratio = sorted(
+        d["perf"].values(), key=lambda r: r["return_per_unit_risk"] or -99, reverse=True
+    )
+    within = sorted(d["within_sector"].items(), key=lambda kv: -kv[1])
+    runner_up = within[1] if len(within) > 1 else within[0]
 
     lines = [
-        f"_All figures: trailing {WINDOW} calendar days ending {d['as_of']}, computed from "
-        f"split- and dividend-adjusted closes. Risk-free rate assumed zero, so "
-        f"\"return per unit of risk\" is annualised return over annualised volatility._",
+        f"_Trailing {WINDOW} days ending {d['as_of']}, from split- and "
+        f"dividend-adjusted closes. Risk-free rate assumed zero, so \"return per "
+        f"unit of risk\" is annualised return over annualised volatility._",
         "",
-        "### 1. Risk was not paid for — and the gap is visible inside equities, not just against crypto",
+        "### 1. More risk did not mean more return",
         "",
-        f"**{hi['sector']} ran {ratio:.1f}x {lo['sector']}'s volatility "
-        f"({_pct(hi['annualized_volatility'])} vs {_pct(lo['annualized_volatility'])}) and returned "
-        f"{_pct(hi['total_return'])} against {lo['sector']}'s {_pct(lo['total_return'])}** — more risk, "
-        "and a worse outcome, over the same window.",
+        f"{hi['sector']} ran {ratio:.1f}x {lo['sector']}'s volatility "
+        f"({_pct(hi['annualized_volatility'])} vs {_pct(lo['annualized_volatility'])}) "
+        f"and returned {_pct(hi['total_return'])} against "
+        f"{_pct(lo['total_return'])} — more risk and a worse outcome over the same "
+        "window.",
         "",
-        f"That comparison is easy to dismiss as a crypto story. It is not. Among equity sectors alone, "
-        f"**{ehi['sector']} carried {eratio:.2f}x {elo['sector']}'s volatility "
-        f"({_pct(ehi['annualized_volatility'])} vs {_pct(elo['annualized_volatility'])}) to return "
-        f"{_pct(ehi['total_return'])} — less than {elo['sector']}'s {_pct(elo['total_return'])}.** "
-        f"Ranked by return per unit of risk, the sectors order "
-        + ", ".join(
-            f"{r['sector']} ({r['return_per_unit_risk']:.2f})"
-            for r in sorted(
-                d["perf"].values(),
-                key=lambda r: r["return_per_unit_risk"] or -99,
-                reverse=True,
-            )
+        f"That is easy to dismiss as a crypto story, but the same thing shows up "
+        f"inside equities: {ehi['sector']} carried {eratio:.2f}x "
+        f"{elo['sector']}'s volatility "
+        f"({_pct(ehi['annualized_volatility'])} vs {_pct(elo['annualized_volatility'])}) "
+        f"to return {_pct(ehi['total_return'])}, less than "
+        f"{elo['sector']}'s {_pct(elo['total_return'])}.",
+        "",
+        "| Sector | Return | Ann. vol | Return/risk |",
+        "|---|---:|---:|---:|",
+    ]
+    for r in by_ratio[:3] + by_ratio[-3:]:
+        lines.append(
+            f"| {r['sector']} | {_pct(r['total_return'])} | "
+            f"{_pct(r['annualized_volatility'])} | {r['return_per_unit_risk']:.2f} |"
         )
-        + ".",
+    lines += [
         "",
-        "### 2. Crypto diversifies a stock portfolio; it does not diversify itself",
+        f"_Best and worst three of {len(by_ratio)} sectors._",
         "",
-        f"Average pairwise correlation *within* crypto is **{d['crypto_crypto_corr']:.2f}** — the highest "
-        f"of any sector. The tempting conclusion is that crypto is uniquely one position wearing three "
-        f"tickers. The data does not support that: "
-        + ", ".join(
-            f"{s_} {v:.2f}"
-            for s_, v in sorted(d["within_sector"].items(), key=lambda kv: -kv[1])
-        )
-        + ". **Energy is nearly as tightly coupled**, so high internal correlation is a property of "
-        "narrow sectors generally, not something peculiar to crypto.",
+        "### 2. Crypto diversifies a stock portfolio, not itself",
         "",
-        f"What *is* distinctive is the other number. Crypto's average correlation to large-cap tech is "
-        f"**{d['crypto_tech_corr']:.2f}**, against a within-sector equity average of "
-        f"{d['equity_within_corr']:.2f}. So the diversification benefit runs outward, not inward: adding "
-        f"a second crypto to a crypto book buys almost nothing, while adding crypto to an equity book "
-        f"genuinely does — the opposite of the common framing of crypto as levered tech beta.",
+        f"Average pairwise correlation *within* crypto is "
+        f"**{d['crypto_crypto_corr']:.2f}**, the highest of any sector — but "
+        f"{runner_up[0]} is right behind at {runner_up[1]:.2f}, so tight internal "
+        "correlation is a property of narrow sectors rather than something "
+        "peculiar to crypto.",
         "",
-        "### 3. Drawdown carries information volatility does not — and it is not about asset class",
+        f"The distinctive number is the other one. Crypto's average correlation to "
+        f"large-cap tech is **{d['crypto_tech_corr']:.2f}**, against "
+        f"{d['equity_within_corr']:.2f} within equity sectors. Adding a second "
+        "crypto to a crypto book buys almost nothing; adding crypto to an equity "
+        "book does.",
         "",
-        f"{dd_c['ticker']} fell **{_pct(dd_c['max_drawdown'])}** peak-to-trough against "
-        f"{dd_e['ticker']}'s **{_pct(dd_e['max_drawdown'])}**, the worst equity. Taken alone that says "
-        f"little: {dd_ratio:.1f}x the drawdown on {vol_ratio:.1f}x the volatility is roughly what "
-        "volatility already predicts.",
+        "### 3. Drawdown carries information volatility does not",
         "",
-        "Divide each asset's drawdown by its own volatility and the picture separates cleanly — but "
-        "not along the line you would expect:",
+        f"{dd_c['ticker']} fell **{_pct(dd_c['max_drawdown'])}** peak to trough "
+        f"against {dd_e['ticker']}'s **{_pct(dd_e['max_drawdown'])}**, the worst "
+        f"equity. On its own that is unremarkable: {dd_ratio:.1f}x the drawdown on "
+        f"{vol_ratio:.1f}x the volatility is roughly what volatility already "
+        "predicts.",
         "",
-        f"- All **{len(winners_)}** assets that finished the window positive sit at or below "
-        f"**{max_win:.2f}** drawdowns-per-unit-volatility (deepest: {worst_winner['ticker']}).",
-        f"- All **{len(losers_)}** that finished negative sit at or above **{min_lose:.2f}** "
-        f"(shallowest: {best_loser['ticker']}).",
-        f"- The two groups do not overlap{sep_note}.",
+        f"Divide each asset's drawdown by its own volatility and {sep_lede}. The "
+        f"**{len(winners_)}** assets that finished the window positive sit at or "
+        f"below **{max_win:.2f}**; the **{len(losers_)}** that finished negative "
+        f"sit at or above **{min_lose:.2f}**{sep_note}.{equity_note}",
         "",
-        f"The split is by *outcome*, not by asset type: {equity_loser} is an equity that lost only "
-        f"{_pct(equity_loser_ret)} yet sits in the second group, {equity_loser_rank}. "
-        "Volatility is direction-blind by construction — it treats a 5% rise and a 5% fall as the same "
-        "event — so it prices the size of the moves but not the order they arrive in. Drawdown is the "
-        "order. For position sizing that difference is the whole game: it is the loss an investor "
-        "actually has to sit through.",
+        "Volatility treats a 5% rise and a 5% fall as the same event, so it prices "
+        "the size of the moves but not the order they arrive in. Drawdown is the "
+        "order, and it is the loss someone actually has to sit through.",
         "",
         "### 4. The best return and the best investment are different assets",
         "",
-        f"{top['ticker']} posted the highest return in the set at **{_pct(top['total_return'])}** — but "
-        f"ranks {ranked.index(top) + 1}{'st' if ranked.index(top) == 0 else ('nd' if ranked.index(top) == 1 else ('rd' if ranked.index(top) == 2 else 'th'))} "
-        f"on a risk-adjusted basis, because it took {_pct(top['annualized_volatility'])} volatility to "
-        f"get there. **{best['ticker']}** leads at {best['return_per_unit_risk']:.2f} with "
-        f"{_pct(best['annualized_volatility'])} volatility and a "
-        f"{_pct(best['max_drawdown'])} maximum drawdown — the shallowest in the set.",
+        f"{top['ticker']} posted the highest return in the set at "
+        f"**{_pct(top['total_return'])}**, but ranks "
+        f"{_ordinal(ranked.index(top) + 1)} risk-adjusted — it took "
+        f"{_pct(top['annualized_volatility'])} volatility to get there. "
+        f"**{best['ticker']}** leads at {best['return_per_unit_risk']:.2f} on "
+        f"{_pct(best['annualized_volatility'])} volatility, with a "
+        f"{_pct(best['max_drawdown'])} maximum drawdown — the shallowest in the "
+        "set.",
         "",
         "| Asset | Sector | Return | Ann. vol | Return/risk | Max drawdown |",
         "|---|---|---:|---:|---:|---:|",
@@ -268,11 +283,9 @@ def render_markdown(d: dict) -> str:
     negatives = [r for r in ranked if r["return_per_unit_risk"] < 0]
     lines += [
         "",
-        f"_Top three and bottom three of {len(ranked)}. "
-        f"{len(negatives)} assets finished the window with a negative ratio: "
-        + ", ".join(r["ticker"] for r in negatives)
-        + f" — the last of which ({worst['ticker']}, {worst['return_per_unit_risk']:.2f}) was the worst "
-        "of the set._",
+        f"_Top and bottom three of {len(ranked)}. {len(negatives)} assets finished "
+        f"the window with a negative ratio; the worst was {worst['ticker']} at "
+        f"{worst['return_per_unit_risk']:.2f}._",
     ]
     return "\n".join(lines)
 
