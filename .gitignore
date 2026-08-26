@@ -20,3 +20,13 @@ web/dist/
 
 # build artifacts
 *.tsbuildinfo
+
+# Agent tooling. Local editor/assistant config, not project source - it was
+# tracked for the first 59 commits, which made the repo read as a Claude
+# project in the GitHub file listing. The files stay on disk; they just are
+# not the repo's business.
+.claude/
+CLAUDE.md
+
+# Screenshot pass output. web/scripts/screenshot.py writes 24+ PNGs per run.
+web/screenshots/
