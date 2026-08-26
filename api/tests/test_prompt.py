@@ -197,3 +197,28 @@ def test_few_shot_sql_filters_on_sectors_that_exist(owner_url) -> None:
     assert used, "no sector literal found in the few-shot SQL - has it changed shape?"
     unknown = used - sectors
     assert not unknown, f"few-shot SQL filters on sectors that do not exist: {sorted(unknown)}"
+
+
+def test_prompt_forbids_grouping_by_a_metric_column() -> None:
+    """Observed live, in the screenshot pass for Phase 7.
+
+    Asked for "the three sectors with the highest annualised volatility", the
+    model wrote `GROUP BY a.sector, m.annualized_volatility ... LIMIT 3` and
+    answered "the three sectors ... are all 'Crypto'". Adding the metric to the
+    GROUP BY makes every asset its own group, so the query silently ranks
+    assets while labelling them as sectors - and nothing fails: the SQL is
+    valid, the guard passes it, three rows come back.
+
+    The first few-shot already demonstrates the correct shape. It was not
+    enough, because that example answers "which sector" (singular) and the
+    failing question asked for three, so the model reached for a LIMIT and
+    reshaped the grouping to match. Hence a rule that names the wrong form
+    outright rather than only showing the right one.
+    """
+    # Collapsed, because the rule is wrapped and a line break falls in the
+    # middle of both phrases being looked for.
+    flat = " ".join(SYSTEM_PROMPT.split())
+    assert "GROUP BY a.sector, m.annualized_volatility" in flat, (
+        "the rule no longer shows the wrong form it is warning against"
+    )
+    assert "Group by `a.sector` alone and aggregate the metric" in flat

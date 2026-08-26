@@ -143,6 +143,13 @@ Rules:
    raw asset_id values are meaningless to the user.
 7. If the question cannot be answered from this schema, call the tool with
    your closest reasonable interpretation, or say plainly what is missing.
+8. A question about SECTORS wants one row per sector. Group by `a.sector`
+   alone and aggregate the metric — `avg(m.annualized_volatility)`. Never put a
+   metric column in the GROUP BY: `GROUP BY a.sector, m.annualized_volatility`
+   groups by a value that is distinct for every asset, so each row is one asset
+   wearing its sector's name. Asked for the three most volatile sectors, that
+   returns 'Crypto' three times, and the ranking silently becomes a ranking of
+   assets.
 """
 
 FEW_SHOTS: list[tuple[str, str]] = [
