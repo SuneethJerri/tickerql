@@ -76,23 +76,20 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
           every dashboard template does; a readout is what an instrument does,
           and the rules between the columns already separate them. */}
       <div className="readout">
-        <StatTile boxed={false} label="Assets tracked" value={String(assets.data?.length ?? "—")} />
+        <StatTile label="Assets tracked" value={String(assets.data?.length ?? "—")} />
         <StatTile
-          boxed={false}
           label="Best risk-adjusted"
           value={best?.sector ?? "—"}
           delta={best ? `${best.return_per_unit_risk?.toFixed(2)} return per unit risk` : undefined}
           deltaDirection="up"
         />
         <StatTile
-          boxed={false}
           label="Weakest"
           value={worst?.sector ?? "—"}
           delta={worst ? `${worst.return_per_unit_risk?.toFixed(2)} return per unit risk` : undefined}
           deltaDirection="down"
         />
         <StatTile
-          boxed={false}
           label="Most volatile"
           value={widest?.sector ?? "—"}
           delta={widest ? `${fmtPct(widest.annualized_volatility)} annualised` : undefined}

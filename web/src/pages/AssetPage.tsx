@@ -83,7 +83,7 @@ export function AssetPage({ mode }: { mode: ChartBase }) {
 
       {error ? <ErrorNotice error={error} /> : (
         <>
-          <div className="grid kpi">
+          <div className="readout">
             <StatTile
               label="Annualised return"
               value={fmtPct(metrics?.annualized_return)}
