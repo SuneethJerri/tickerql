@@ -304,12 +304,26 @@ That rule shaped three of the four views.
 | **Correlation** | 19×19 sector means, click a cell to drill into its assets | 135×135 is 18,225 cells and ~3,500 px tall. A sector cell is the mean of the pairwise correlations behind it, self-pairs excluded so intra-sector cells are not inflated by sector size |
 | **Ask** | Conversational transcript with live progress | Follow-ups refer back to earlier turns; every step is a real boundary in the agent loop, not a timer |
 
-Five themes (Light, Dark, Midnight, Graphite, Sepia) on one axis and four accents
-on another, so any pairing works. Each theme surface goes through the dataviz
-validator against the series palette before it ships. The validator is
+Five themes (Light, Dark, Midnight, Graphite, Sepia) on one axis and four
+accents on another, so any pairing works. Each theme surface goes through the
+dataviz validator against the series palette before it ships. The validator is
 vendored at [`web/scripts/validate_palette.js`](web/scripts/validate_palette.js)
 rather than pulled in as a dependency, so the check is reproducible from a clone
 instead of being a claim about a script that lives somewhere else.
+
+Two rules hold the colour system together. **Data owns the hues** — the
+validated categorical set is the only saturated thing on a page that carries
+meaning. **Chrome wears ink**, so the four accents (Teal, Plum, Ochre, Oxblood)
+are each measured to be OKLab ΔE ≥ 15 from *every* series colour in their base,
+and a button can never be mistaken for a line. The set they replaced failed that
+test badly: its blue was `#2a78d6`, which is ΔE **0.0** from categorical slot
+one — the accent *was* the chart's blue.
+
+Three typefaces because the product has three registers: Martian Mono for the
+wordmark and every figure, Inter Tight for all prose, and IBM Plex Mono reserved
+for SQL. The query face is deliberately not the display face — the seam between
+the English question and the SQL it produced is the thing being shown, so the
+query gets its own voice.
 
 The validator only reads colour, so layout is checked by
 [`web/scripts/screenshot.py`](web/scripts/screenshot.py), which shoots every view
@@ -320,7 +334,15 @@ On the Ask page, `/api/query/stream` reports boundaries the agent loop already
 passes through — model call started and finished, candidate SQL produced, guard
 verdict, statement executing, rows returned. Only the elapsed clock is computed
 in the browser, because a progress display that invents phases on a timer lies
-exactly when the model is slow. Answers arrive as markdown and render as
+exactly when the model is slow.
+
+The generated SQL is always visible rather than folded into a disclosure widget,
+and it is syntax-coloured from the *chart* palette — keywords in series blue,
+literals in series orange, identifiers in series green — so the app has one
+colour system and the query wears the same hues as the chart it justifies. A 3px
+gutter beside it carries the guard's verdict in `--good` or `--critical`, which
+makes the security boundary a permanent property of every answer instead of a
+notice that only appears when it fails. Answers arrive as markdown and render as
 markdown via a small renderer in
 [`web/src/components/Markdown.tsx`](web/src/components/Markdown.tsx) rather than
 react-markdown plus remark-gfm, which is about 100 kB for six constructs. It

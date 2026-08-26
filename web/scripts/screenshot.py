@@ -333,6 +333,29 @@ def main() -> int:
     profile = Path(tempfile.mkdtemp(prefix="shot-profile-"))
     failures = 0
     try:
+        # One throwaway navigation before the real shots. Warming the API says
+        # nothing about the FRONT end: a dev server that has just restarted has
+        # not transformed the module graph, and it only does that when a browser
+        # asks for the modules. The first Blueprint shot was taken against
+        # exactly that state - API warm, hold correctly derived, page still
+        # empty - and the readout's four em dashes are what it is supposed to
+        # show before data arrives, so it read as a design rather than as a
+        # missing fetch. The only signal was the file size. This discards a
+        # frame so the measured hold applies to a server that is actually ready.
+        if not args.no_warm:
+            started = time.monotonic()
+            subprocess.run(
+                [
+                    args.browser, "--headless", "--profile", str(profile),
+                    "--window-size", f"{args.width},{args.height}",
+                    "--screenshot", str(profile / "warmup.png"),
+                    f"http://127.0.0.1:{args.port}/?tab=dashboard",
+                ],
+                capture_output=True,
+                timeout=180,
+            )
+            print(f"warm {time.monotonic() - started:6.1f}s     app  (discarded frame)")
+
         for theme in args.themes.split(","):
             for tab in args.tabs.split(","):
                 tab = TAB_ALIASES.get(tab.strip().lower(), tab.strip().lower())
