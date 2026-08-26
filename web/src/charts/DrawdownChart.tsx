@@ -39,6 +39,15 @@ export function DrawdownChart({
   const ticks: number[] = [];
   for (let value = 0; value >= -depth; value -= step) ticks.push(value / 100);
 
+  // A hair of headroom above zero, for two reasons that share one cause: with
+  // the domain ending exactly at 0 the series sat flush against the plot's top
+  // edge. Recharts then culled the 0% tick, because its label would overhang
+  // that edge - so the axis read -5% / -10% / -15% and never named the one
+  // value the whole chart is measured from. And the peak line and the panel
+  // border became the same pixel, so "at its high-water mark" looked like
+  // "no data here".
+  const headroom = depth * 0.05;
+
   const monthTicks: string[] = [];
   let lastMonth = "";
   for (const point of points) {
@@ -64,7 +73,7 @@ export function DrawdownChart({
           axisLine={false} width={46}
           // Pinned to a round depth rather than autoscaled: a shallow
           // drawdown autoscaled to fill the panel looks exactly like a deep one.
-          domain={[-depth / 100, 0]} ticks={ticks}
+          domain={[-depth / 100, headroom / 100]} ticks={ticks}
           tickFormatter={(v: number) => `${(v * 100).toFixed(0)}%`}
         />
         <ReferenceLine y={0} stroke="var(--border-strong)" strokeWidth={1} />

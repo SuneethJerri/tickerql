@@ -7,6 +7,30 @@ import { fmtPct } from "../api";
 import { MARK, assetTypeColor, type ChartBase } from "./palette";
 import { Legend, TooltipCard } from "./ChartTooltip";
 
+/** Evenly spaced ticks inside a domain.
+ *
+ * Recharts, handed an explicit domain, pins both endpoints and rounds only the
+ * interior. On a [-120, 230] return domain that produced 230 / 60 / -30 / -120
+ * - three gaps of 90 and one of 170, which reads as an axis with a mistake in
+ * it rather than as a scale. DrawdownChart already worked around this with
+ * explicit ticks; the scatter did not, and its domain moves with the window so
+ * the defect appears and disappears with the data.
+ *
+ * The endpoints are deliberately not forced into the tick list: they are
+ * padding, not readings, and labelling them is what forced the uneven gap.
+ */
+function evenTicks([lo, hi]: [number, number], intervals = 4): number[] {
+  const raw = (hi - lo) / intervals;
+  const magnitude = 10 ** Math.floor(Math.log10(Math.max(raw, 1e-6)));
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * magnitude).find((s) => s >= raw) ?? raw;
+  const ticks: number[] = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step / 1e6; v += step) {
+    // Binary floating point: 0.1 steps accumulate visible dust by the tenth.
+    ticks.push(Math.round(v * 1e6) / 1e6);
+  }
+  return ticks;
+}
+
 /** Risk vs return.
  *
  * Deliberately NOT coloured by sector. A scatter is an all-pairs form: any two
@@ -61,6 +85,8 @@ export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Ch
   const xDomain = pad(xs, 0.08);
   // More headroom vertically: labels sit above their marks.
   const yDomain = pad(ys, 0.14);
+  const xTicks = evenTicks(xDomain);
+  const yTicks = evenTicks(yDomain);
 
   // The points worth naming: best and worst return per unit of risk, the
   // calmest and the wildest, and the single best and worst return. Six
@@ -94,14 +120,14 @@ export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Ch
           <XAxis
             type="number" dataKey="x" name="Annualised volatility" domain={xDomain}
             tick={{ fontSize: 11, fill: "var(--text-muted)" }} tickLine={false}
-            axisLine={{ stroke: "var(--border)" }} unit="%"
+            axisLine={{ stroke: "var(--border)" }} unit="%" ticks={xTicks}
             label={{ value: "Annualised volatility", position: "insideBottom", offset: -16,
                      fontSize: 11.5, fill: "var(--text-secondary)" }}
           />
           <YAxis
             type="number" dataKey="y" name="Annualised return" domain={yDomain}
             tick={{ fontSize: 11, fill: "var(--text-muted)" }} tickLine={false}
-            axisLine={false} width={52} unit="%"
+            axisLine={false} width={52} unit="%" ticks={yTicks}
             label={{ value: "Annualised return", angle: -90, position: "insideLeft",
                      offset: 12, fontSize: 11.5, fill: "var(--text-secondary)" }}
           />
@@ -143,6 +169,13 @@ export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Ch
               <LabelList
                 dataKey="label" position="top" offset={7}
                 fontSize={10.5} fontWeight={600} fill="var(--text-primary)"
+                // A halo in the surface colour. The labelled points are the
+                // extremes, but "calmest" and "worst return per unit of risk"
+                // can still land inside the crowded middle, where the bare
+                // text was drawn straight over its own mark and its
+                // neighbours'. Stroke first, fill over it.
+                stroke="var(--surface-1)" strokeWidth={3}
+                style={{ paintOrder: "stroke" }}
               />
             </Scatter>
           ))}
