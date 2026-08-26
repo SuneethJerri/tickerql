@@ -3,6 +3,11 @@
  * Five themes, each stamped as [data-theme] by useTheme.ts. Accent is a
  * separate axis stamped as [data-accent], so any accent works with any theme.
  *
+ * Two rules hold the whole thing together: DATA OWNS THE HUES - the validated
+ * categorical set is the only saturated thing on the page that means something
+ * - and CHROME WEARS INK, so every accent is provably far from every series
+ * colour and a button can never be mistaken for a line.
+ *
  * Surfaces were validated against the chart series palette before being added -
  * checked with web/scripts/validate_palette.js. Chart SERIES colours are not here;
  * they live in charts/palette.ts, keyed by a theme's chartBase.
@@ -15,21 +20,31 @@
 :root,
 :root[data-theme="light"] {
   color-scheme: light;
-  --surface-0: #f4f3f0;
-  --surface-1: #fcfcfb;
-  --surface-2: #efeeea;
-  --border: #dedcd6;
-  --border-strong: #c3c2bd;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #77766f;
-  --grid: #e6e5e0;
+  /* Cool ledger paper, ink navy. Not cream and not black: the page reads as
+   * something drafted rather than something printed, which is what the product
+   * is. --surface-1 is also the chart surface and was validated against the
+   * categorical set on both pairlists before being used here.
+   *
+   * --text-muted is #5f6c7c rather than the #6b7a8c this palette was drawn
+   * with, because #6b7a8c measured 4.16:1 against the card - under the 4.5:1
+   * body-text floor. The same check caught the OLD light theme failing at 4.44
+   * and sepia at 4.12, so this was a standing defect in every light-base theme
+   * and not something the new palette introduced. */
+  --surface-0: #e9edf2;
+  --surface-1: #f7f9fb;
+  --surface-2: #dee4ec;
+  --border: #c6d0dc;
+  --border-strong: #a9b6c6;
+  --text-primary: #0e1620;
+  --text-secondary: #43505f;
+  --text-muted: #5f6c7c;
+  --grid: #dbe2ea;
   --good: #0f7a33;
   --critical: #c0392b;
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.05);
   --shadow-md: 0 1px 2px rgb(0 0 0 / 0.05), 0 4px 16px rgb(0 0 0 / 0.04);
   --shadow-lg: 0 2px 6px rgb(0 0 0 / 0.06), 0 12px 32px rgb(0 0 0 / 0.07);
-  --scrim: rgb(252 252 251 / 0.72);
+  --scrim: rgb(247 249 251 / 0.72);
 }
 
 :root[data-theme="sepia"] {
@@ -41,7 +56,7 @@
   --border-strong: #c4b391;
   --text-primary: #2a2317;
   --text-secondary: #5c5140;
-  --text-muted: #837661;
+  --text-muted: #746856;  /* was #837661 — 4.12:1, under the 4.5 floor */
   --grid: #e6dac0;
   --good: #0f7a33;
   --critical: #b03a2b;
@@ -120,28 +135,28 @@
  * reader who picked purple silently got blue. var() resolves at use time, so
  * aliasing avoids the whole class of ordering bug. */
 :root {
-  --hue-blue: #2a78d6;
-  --hue-purple: #6b4fd0;
-  --hue-green: #0f7a4d;
-  --hue-orange: #c2560f;
+  --hue-teal: #016869;
+  --hue-plum: #8a1e6e;
+  --hue-ochre: #744c00;
+  --hue-oxblood: #97202b;
   --accent-ink: #ffffff;
 }
 
 :root[data-theme="dark"],
 :root[data-theme="midnight"],
 :root[data-theme="graphite"] {
-  --hue-blue: #3987e5;
-  --hue-purple: #9085e9;
-  --hue-green: #1baf7a;
-  --hue-orange: #eb6834;
+  --hue-teal: #7fd3ce;
+  --hue-plum: #dda8fe;
+  --hue-ochre: #e5be6b;
+  --hue-oxblood: #f0a9a0;
   --accent-ink: #0b0b0b;
 }
 
 :root,
-:root[data-accent="blue"]   { --accent: var(--hue-blue); }
-:root[data-accent="purple"] { --accent: var(--hue-purple); }
-:root[data-accent="green"]  { --accent: var(--hue-green); }
-:root[data-accent="orange"] { --accent: var(--hue-orange); }
+:root[data-accent="teal"]    { --accent: var(--hue-teal); }
+:root[data-accent="plum"]    { --accent: var(--hue-plum); }
+:root[data-accent="ochre"]   { --accent: var(--hue-ochre); }
+:root[data-accent="oxblood"] { --accent: var(--hue-oxblood); }
 
 /* OS preference maps onto the dark values, and only when nothing is stamped. */
 @media (prefers-color-scheme: dark) {
@@ -158,10 +173,10 @@
     --grid: #2b2b29;
     --good: #3fbf5f;
     --critical: #e56a5c;
-    --hue-blue: #3987e5;
-    --hue-purple: #9085e9;
-    --hue-green: #1baf7a;
-    --hue-orange: #eb6834;
+    --hue-teal: #7fd3ce;
+    --hue-plum: #dda8fe;
+    --hue-ochre: #e5be6b;
+    --hue-oxblood: #f0a9a0;
     --accent-ink: #0b0b0b;
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-md: 0 1px 2px rgb(0 0 0 / 0.4), 0 4px 16px rgb(0 0 0 / 0.3);
@@ -180,6 +195,8 @@
 
   --text-xs: 11px; --text-sm: 12.5px; --text-base: 14px;
   --text-lg: 15px; --text-xl: 20px;  --text-2xl: 28px;
+  /* Display sizes, for the one hero moment on the dashboard. */
+  --text-3xl: 40px; --text-4xl: 56px;
 
   --shadow: var(--shadow-md);
 
@@ -187,8 +204,19 @@
   --dur-fast: 120ms;
   --dur: 200ms;
 
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  /* Three faces because the product has three registers, and every stack keeps
+   * a real fallback so a blocked font request degrades rather than breaks.
+   *
+   * --font-display is the instrument voice: the wordmark, the readout figures,
+   * the eyebrows. It never touches prose - wide mono at paragraph length is
+   * unreadable, and that is the risk this whole direction is taking.
+   *
+   * --font-mono is deliberately NOT the display face. The seam between the
+   * English question and the SQL it produced is the thing being shown, so the
+   * query gets its own voice rather than borrowing the wordmark's. */
+  --font-display: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Inter Tight", ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -221,7 +249,10 @@ body {
 @supports not (backdrop-filter: blur(1px)) {
   .topbar { background: var(--surface-1); }
 }
-.brand { font-weight: 650; letter-spacing: -0.01em; margin-right: var(--space-1); }
+.brand {
+  font-family: var(--font-display); font-weight: 600;
+  letter-spacing: -0.03em; margin-right: var(--space-1);
+}
 .nav { display: flex; gap: 2px; }
 .nav button {
   background: none; border: none; cursor: pointer;
@@ -244,10 +275,10 @@ body {
   background: var(--dot);
   transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
-.accent-dot[data-hue="blue"]   { --dot: var(--hue-blue); }
-.accent-dot[data-hue="purple"] { --dot: var(--hue-purple); }
-.accent-dot[data-hue="green"]  { --dot: var(--hue-green); }
-.accent-dot[data-hue="orange"] { --dot: var(--hue-orange); }
+.accent-dot[data-hue="teal"]    { --dot: var(--hue-teal); }
+.accent-dot[data-hue="plum"]    { --dot: var(--hue-plum); }
+.accent-dot[data-hue="ochre"]   { --dot: var(--hue-ochre); }
+.accent-dot[data-hue="oxblood"] { --dot: var(--hue-oxblood); }
 .accent-dot:hover { transform: scale(1.12); }
 /* The selected dot is marked by a ring in the surface colour, not by a colour
    change - the dot's colour is the thing it is naming. */
@@ -281,13 +312,80 @@ body {
 .card h2 { font-size: var(--text-lg); font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }
 .card .subtitle { font-size: var(--text-sm); color: var(--text-muted); margin: 0 0 var(--space-4); }
 
-/* ---------- stat tiles ---------- */
-.stat { display: flex; flex-direction: column; gap: 2px; }
-.stat .label { font-size: var(--text-sm); color: var(--text-muted); }
-.stat .value { font-size: var(--text-2xl); font-weight: 620; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.stat .delta { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+/* ---------- masthead ---------- */
+/* One hero moment, and it is the only place the display face runs large.
+ * The wordmark at 56px is the commitment this direction is making. */
+.masthead { margin-bottom: var(--space-6); }
+.masthead h1 {
+  font-family: var(--font-display);
+  font-size: var(--text-4xl); font-weight: 300;
+  letter-spacing: -0.04em; line-height: 1;
+  margin: 0 0 var(--space-4); color: var(--text-primary);
+}
+/* Hairline rules above and below, no box. A rule is a bound; a box is a
+ * container, and this strip is not holding anything in. */
+.masthead .meta {
+  font-family: var(--font-display);
+  font-size: var(--text-xs); font-weight: 300;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-3) 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- readout strip ---------- */
+/* Boxes-around-numbers is the template answer. This is a readout: label above,
+ * figure below, hairline rules between the columns and nothing around them. */
+.readout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-6);
+}
+.readout .stat {
+  display: flex; flex-direction: column; gap: var(--space-1);
+  padding: var(--space-4) var(--space-5) var(--space-5) 0;
+  border-left: 1px solid var(--border);
+  padding-left: var(--space-5);
+}
+/* The first column sits flush with the page's left edge; a leading rule there
+ * would read as a border on a box that does not exist. */
+.readout .stat:first-child { border-left: none; padding-left: 0; }
+.readout .stat .label {
+  font-family: var(--font-display);
+  font-size: var(--text-xs); font-weight: 300;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-muted);
+}
+.readout .stat .value {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl); font-weight: 600;
+  letter-spacing: -0.03em; line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  /* Sector names are the long case - "Communication Services" at 28px mono
+   * overflows a 200px column, and the readout has no box to clip it. */
+  overflow-wrap: anywhere;
+}
+.readout .stat .delta {
+  font-size: var(--text-sm); color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
 .delta.up { color: var(--good); }
 .delta.down { color: var(--critical); }
+
+/* Kept for the asset page, which still wants four bounded tiles beside a
+ * chart rather than a page-width readout. */
+.card.stat { display: flex; flex-direction: column; gap: 2px; }
+.card.stat .label { font-size: var(--text-sm); color: var(--text-muted); }
+.card.stat .value {
+  font-family: var(--font-display);
+  font-size: var(--text-xl); font-weight: 600;
+  letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.card.stat .delta { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 
 /* ---------- controls (one row, above the charts) ---------- */
 .controls {
@@ -508,16 +606,65 @@ table.data .swatch {
 }
 .ask-notice { margin-top: var(--space-4); }
 
-details.sql, details.steps { margin-top: var(--space-2); }
-details.sql summary, details.steps summary {
+details.steps { margin-top: var(--space-2); }
+details.steps summary {
   cursor: pointer; color: var(--text-muted); font-size: var(--text-sm);
   display: flex; align-items: center; gap: var(--space-3);
 }
 .chip.copy { padding: 1px var(--space-2); font-size: var(--text-xs); }
+
+/* ---------- SQL as artifact ---------- */
+/* The one promise this product makes is that an answer can be audited against
+ * the query behind it, so the query is not a disclosure widget to be tucked
+ * into a <details>. It is the thing the page is built around, and it is always
+ * visible on an answer. */
+.sql-artifact { margin-top: var(--space-4); }
+.sql-artifact .sql-head {
+  display: flex; align-items: center; gap: var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--text-xs); font-weight: 300;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-muted); margin-bottom: var(--space-2);
+}
+/* The verdict wears the gutter's colour, so the words and the rule beside the
+ * query say the same thing. Without the separator the two uppercase, letter-
+ * spaced phrases read as one run - "SQL THAT PRODUCED THIS ANSWER GUARD
+ * ACCEPTED" - and a 12px flex gap is not enough to break them apart. */
+.sql-artifact .verdict { color: var(--good); }
+.sql-artifact .verdict[data-guard="blocked"] { color: var(--critical); }
+.sql-artifact .verdict::before {
+  content: "·"; margin-right: var(--space-3);
+  color: var(--border-strong); letter-spacing: 0;
+}
+.sql-artifact .sql-head .chip.copy { margin-left: auto; letter-spacing: 0; }
+/* The gutter is the security boundary made permanent. Green when the guard
+ * accepted the statement, red when it blocked one - so the boundary is a
+ * visible property of every answer rather than a notice that only appears on
+ * failure, which is the one time nobody is reassured by it. */
 pre.sql-text {
-  font-family: var(--font-mono); font-size: 12px;
-  background: var(--surface-2); border-radius: var(--radius-sm);
-  padding: var(--space-3); overflow-x: auto; margin: var(--space-2) 0 0;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--good);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-5);
+  overflow-x: auto; margin: 0;
+  tab-size: 2;
+}
+pre.sql-text[data-guard="blocked"] { border-left-color: var(--critical); }
+/* Syntax wears the CHART's colours, not a second palette. The app then has
+ * exactly one colour system, and the query is painted in the same hues as the
+ * chart it justifies. These are categorical slots 1, 2 and 3, which is also
+ * why they are safe together: they are the all-pairs-validated three. */
+.sql-text .kw  { color: var(--sql-kw); font-weight: 500; }
+.sql-text .lit { color: var(--sql-lit); }
+.sql-text .id  { color: var(--sql-id); }
+.sql-text .cm  { color: var(--text-muted); font-style: italic; }
+:root { --sql-kw: #2a78d6; --sql-lit: #eb6834; --sql-id: #1baf7a; }
+:root[data-theme="dark"],
+:root[data-theme="midnight"],
+:root[data-theme="graphite"] { --sql-kw: #3987e5; --sql-lit: #d95926; --sql-id: #199e70; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) { --sql-kw: #3987e5; --sql-lit: #d95926; --sql-id: #199e70; }
 }
 .suggestions {
   display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3);

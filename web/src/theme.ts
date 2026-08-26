@@ -13,7 +13,17 @@
 export const THEME_NAMES = ["light", "dark", "midnight", "graphite", "sepia"] as const;
 export type ThemeName = (typeof THEME_NAMES)[number];
 
-export const ACCENT_NAMES = ["blue", "purple", "green", "orange"] as const;
+/** Four inks, not four brand colours.
+ *
+ * The previous set was blue/purple/green/orange, and its blue was `#2a78d6` -
+ * OKLab dE 0.0 from categorical slot one. The accent WAS the chart's blue, so a
+ * button and a data series were the same colour and the page had no way to say
+ * which saturated things carry meaning. These four were picked by an OKLCH
+ * sweep against three gates, all measured: WCAG >= 3.0 against every surface in
+ * their base (actual 5.15-11.35), WCAG >= 4.5 against their own ink (6.59-11.35),
+ * and OKLab dE >= 15 from EVERY categorical hue in their base (15.0-20.2).
+ * Data owns the hues; chrome wears ink. */
+export const ACCENT_NAMES = ["teal", "plum", "ochre", "oxblood"] as const;
 export type AccentName = (typeof ACCENT_NAMES)[number];
 
 /** Which set of chart series steps a theme uses. Series colours are selected
@@ -30,7 +40,7 @@ export interface Theme {
 }
 
 export const THEMES: Record<ThemeName, Theme> = {
-  light:    { label: "Light",    chartBase: "light", colorScheme: "light", surface: "#fcfcfb" },
+  light:    { label: "Light",    chartBase: "light", colorScheme: "light", surface: "#f7f9fb" },
   dark:     { label: "Dark",     chartBase: "dark",  colorScheme: "dark",  surface: "#1a1a19" },
   midnight: { label: "Midnight", chartBase: "dark",  colorScheme: "dark",  surface: "#121826" },
   graphite: { label: "Graphite", chartBase: "dark",  colorScheme: "dark",  surface: "#2c2c2e" },
@@ -38,14 +48,14 @@ export const THEMES: Record<ThemeName, Theme> = {
 };
 
 export const ACCENTS: Record<AccentName, { label: string }> = {
-  blue:   { label: "Blue" },
-  purple: { label: "Purple" },
-  green:  { label: "Green" },
-  orange: { label: "Orange" },
+  teal:    { label: "Teal" },
+  plum:    { label: "Plum" },
+  ochre:   { label: "Ochre" },
+  oxblood: { label: "Oxblood" },
 };
 
 export const DEFAULT_THEME: ThemeName = "light";
-export const DEFAULT_ACCENT: AccentName = "blue";
+export const DEFAULT_ACCENT: AccentName = "teal";
 
 export function isThemeName(v: unknown): v is ThemeName {
   return typeof v === "string" && (THEME_NAMES as readonly string[]).includes(v);

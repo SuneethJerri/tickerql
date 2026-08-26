@@ -4,6 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>tickerql — market analytics</title>
+
+    <!-- Three faces, three registers: Martian Mono is the instrument voice
+         (wordmark, figures), Inter Tight carries all prose, IBM Plex Mono is
+         reserved for SQL so the generated query has a voice of its own. Only
+         the weights actually used are requested. display=swap means a slow
+         font request delays nothing; every stack in styles.css keeps a real
+         fallback, so a blocked request degrades instead of breaking. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;600&family=Inter+Tight:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+    />
     <script>
       // Applied before first paint. Without this a user whose OS is light but
       // who chose a dark theme sees a light flash on every load, because the
@@ -13,9 +26,9 @@
           var t = localStorage.getItem("theme");
           var a = localStorage.getItem("accent");
           var themes = ["light", "dark", "midnight", "graphite", "sepia"];
-          var accents = ["blue", "purple", "green", "orange"];
+          var accents = ["teal", "plum", "ochre", "oxblood"];
           if (themes.indexOf(t) >= 0) document.documentElement.setAttribute("data-theme", t);
-          document.documentElement.setAttribute("data-accent", accents.indexOf(a) >= 0 ? a : "blue");
+          document.documentElement.setAttribute("data-accent", accents.indexOf(a) >= 0 ? a : "teal");
         } catch (e) {}
       })();
     </script>
