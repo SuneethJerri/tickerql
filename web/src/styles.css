@@ -849,6 +849,83 @@ pre.sql-text[data-guard="blocked"] { border-left-color: var(--critical); }
               border-color var(--dur-fast) var(--ease);
 }
 
+/* ---------- command palette ---------- */
+/* The affordance for the shortcut. Quiet - it is a way in, not a call to
+   action - but present, because a keyboard-only feature does not exist for
+   anyone who has not been told about it. */
+.palette-open {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  background: none; border: 1px solid var(--border);
+  border-radius: var(--radius-full); cursor: pointer;
+  padding: 3px 8px 3px 10px;
+  color: var(--text-muted); font: inherit; font-size: var(--text-sm);
+}
+.palette-open:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.palette-open kbd {
+  font-family: var(--font-mono); font-size: var(--text-xs);
+  color: var(--text-muted); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 0 4px;
+}
+
+.palette-backdrop {
+  position: fixed; inset: 0; z-index: 60;
+  background: var(--scrim);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  /* Not centred vertically: the list grows downwards, and a dialog that grows
+     from the middle of the screen moves its own first row as you type. */
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 12vh var(--space-4) var(--space-4);
+}
+.palette {
+  width: min(560px, 100%);
+  background: var(--surface-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.palette-input {
+  width: 100%; box-sizing: border-box;
+  background: none; border: none; border-bottom: 1px solid var(--border);
+  padding: var(--space-4) var(--space-5);
+  color: var(--text-primary); font: inherit; font-size: var(--text-lg);
+}
+.palette-input:focus { outline: none; }
+.palette-input::placeholder { color: var(--text-muted); }
+
+.palette-list {
+  list-style: none; margin: 0; padding: var(--space-2);
+  max-height: min(52vh, 420px); overflow-y: auto;
+}
+.palette-row {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  padding: 7px var(--space-3); border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+/* Highlight follows the keyboard, so it is one row at a time and hover simply
+   moves the same highlight rather than lighting a second one. */
+.palette-row.active { background: var(--surface-2); }
+.palette-row.active .palette-label { color: var(--text-primary); }
+.palette-label {
+  font-family: var(--font-mono); font-size: var(--text-sm);
+  color: var(--text-secondary); white-space: nowrap;
+}
+.palette-detail {
+  font-size: var(--text-sm); color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.palette-kind {
+  margin-left: auto; font-size: var(--text-xs); color: var(--text-muted);
+  letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+}
+.palette-row.empty { cursor: default; color: var(--text-muted); font-size: var(--text-sm); }
+
+@media (max-width: 720px) {
+  /* The label alone is what fits; the shortcut is not reachable there anyway. */
+  .palette-open kbd { display: none; }
+  .palette-backdrop { padding-top: 6vh; }
+}
+
 /* ---------- horizontal scroll for anything wider than the page ---------- */
 /* A table with eight columns does not fit a phone and must not stretch the
    page to fit it either - a body that scrolls sideways drags every other

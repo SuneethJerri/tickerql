@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./api";
 import { useTheme } from "./useTheme";
@@ -10,6 +11,7 @@ import { AssetPage } from "./pages/AssetPage";
 import { AskPage } from "./pages/AskPage";
 import { SectorPage } from "./pages/SectorPage";
 import { ComparePage } from "./pages/ComparePage";
+import { CommandPalette } from "./components/CommandPalette";
 
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
@@ -29,6 +31,21 @@ export default function App() {
   const [tab, setTab] = useUrlEnum<Tab>("tab", TAB_IDS, "dashboard");
   const { theme, accent, choice, setTheme, setAccent } = useTheme();
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 60_000 });
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  // Cmd-K on a Mac, Ctrl-K elsewhere. Bound on the document rather than on a
+  // container so it works wherever focus happens to be - including inside the
+  // Ask textarea, which is where you are most likely to want to leave.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   return (
     <div className="app">
@@ -46,6 +63,18 @@ export default function App() {
           ))}
         </nav>
         <span className="spacer" />
+        {/* The shortcut needs a visible affordance: a keyboard-only feature is
+            invisible to everyone who does not already know it exists. */}
+        <button
+          type="button"
+          className="palette-open"
+          onClick={() => setPaletteOpen(true)}
+          aria-label="Go to an asset, sector or view"
+          title="Go to… (Ctrl-K)"
+        >
+          <span aria-hidden="true">Go to</span>
+          <kbd aria-hidden="true">⌘K</kbd>
+        </button>
         {health.data && (
           <span className="muted health">
             {health.data.price_rows?.toLocaleString("en")} bars · to {health.data.latest_bar}
@@ -95,6 +124,8 @@ export default function App() {
         {tab === "compare" && <ComparePage theme={theme} />}
         {tab === "ask" && <AskPage />}
       </main>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }
