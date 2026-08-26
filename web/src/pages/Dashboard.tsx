@@ -15,6 +15,9 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
   const [ticker, setTicker] = useUrlString("ticker", "AAPL", "replace");
 
   const assets = useQuery({ queryKey: ["assets"], queryFn: api.assets });
+  // Same query key the topbar uses, so react-query serves this from cache
+  // rather than making a second request for the same numbers.
+  const health = useQuery({ queryKey: ["health"], queryFn: api.health });
   const perf = useQuery({
     queryKey: ["sector-performance", windowDays],
     queryFn: () => api.sectorPerformance(windowDays),
@@ -37,8 +40,24 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
     (a, b) => (b.annualized_volatility ?? 0) - (a.annualized_volatility ?? 0),
   )[0];
 
+  const sectorCount = new Set((perf.data ?? []).map((r) => r.sector)).size;
+
   return (
     <>
+      {/* The one hero moment. Everything else on the page is quiet, which is
+          what lets this be loud without the page shouting throughout. */}
+      <header className="masthead">
+        <h1>tickerql</h1>
+        <div className="meta">
+          {assets.data ? `${assets.data.length} assets` : "— assets"}
+          {sectorCount ? ` · ${sectorCount} sectors` : ""}
+          {health.data?.price_rows
+            ? ` · ${health.data.price_rows.toLocaleString("en")} bars`
+            : ""}
+          {health.data?.latest_bar ? ` · to ${health.data.latest_bar}` : ""}
+        </div>
+      </header>
+
       <div className="controls">
         <WindowPicker value={windowDays} onChange={setWindow} />
         <span className="control">
@@ -53,22 +72,28 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
         </span>
       </div>
 
-      <div className="grid kpi">
-        <StatTile label="Assets tracked" value={String(assets.data?.length ?? "—")} />
+      {/* Four figures with no boxes around them. Boxes-around-numbers is what
+          every dashboard template does; a readout is what an instrument does,
+          and the rules between the columns already separate them. */}
+      <div className="readout">
+        <StatTile boxed={false} label="Assets tracked" value={String(assets.data?.length ?? "—")} />
         <StatTile
-          label="Best risk-adjusted sector"
+          boxed={false}
+          label="Best risk-adjusted"
           value={best?.sector ?? "—"}
           delta={best ? `${best.return_per_unit_risk?.toFixed(2)} return per unit risk` : undefined}
           deltaDirection="up"
         />
         <StatTile
-          label="Weakest risk-adjusted sector"
+          boxed={false}
+          label="Weakest"
           value={worst?.sector ?? "—"}
           delta={worst ? `${worst.return_per_unit_risk?.toFixed(2)} return per unit risk` : undefined}
           deltaDirection="down"
         />
         <StatTile
-          label="Most volatile sector"
+          boxed={false}
+          label="Most volatile"
           value={widest?.sector ?? "—"}
           delta={widest ? `${fmtPct(widest.annualized_volatility)} annualised` : undefined}
         />
