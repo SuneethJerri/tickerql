@@ -2,9 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ACCENT_NAMES,
   AccentName,
-  ChartBase,
   DEFAULT_ACCENT,
-  THEMES,
   ThemeName,
   isAccentName,
   isThemeName,
@@ -48,7 +46,6 @@ export function useTheme() {
   }, []);
 
   const theme: ThemeName = choice ?? (systemDark ? "dark" : "light");
-  const chartBase: ChartBase = THEMES[theme].chartBase;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -80,7 +77,6 @@ export function useTheme() {
 
   return {
     theme,
-    chartBase,
     accent,
     choice,
     setTheme,

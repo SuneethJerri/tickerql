@@ -61,7 +61,16 @@ TABS = ["dashboard", "sector", "risk", "correlation", "asset", "compare", "ask"]
 # Three of twenty-four shots in the first Phase 7 pass were skeletons, and the
 # only hint was that their PNGs were smaller than their neighbours'. A gate
 # that silently photographs the wrong thing is worse than no gate.
-MIN_HOLD = 6.0
+# The warm fetches are measured server-side, through the proxy, on an already
+# hot API. The browser doing the same work is slower on every axis: a fresh
+# profile with an empty HTTP cache, React mounting, and Recharts laying out 135
+# scatter points with collision-avoided labels. Deriving the hold from the warm
+# timings alone therefore UNDER-estimates, and it under-estimated by enough to
+# photograph the risk and correlation tabs as loading skeletons while reporting
+# every one of them "ok" - the same failure as M-72, one layer down. The floor
+# and the multiplier are set from that measurement: a 3.8s warm correlation
+# fetch needed more than 9s in the browser and was comfortable at 25s.
+MIN_HOLD = 14.0
 
 WARM = [
     "/api/analytics/correlation?window=365",
@@ -277,11 +286,11 @@ def main() -> int:
     parser.add_argument(
         "--hold", type=float, default=None,
         help="Seconds to hold the load event. Default: derived from how long "
-             "the slowest warm fetch took, with a floor of 6s.",
+             "the slowest warm fetch took, with a floor of 14s.",
     )
     parser.add_argument("--themes", default=",".join(THEMES))
     parser.add_argument("--tabs", default=",".join(TABS))
-    parser.add_argument("--accent", default="blue")
+    parser.add_argument("--accent", default="teal")
     parser.add_argument(
         "--click",
         help="CSS selector to click once it appears (e.g. '.table-toggle').",
@@ -338,7 +347,7 @@ def main() -> int:
         # and ~7s warm, and the shots that fell short came out as loading
         # skeletons rather than as failures. Measured, then, not guessed.
         if args.hold is None:
-            hold[0] = max(MIN_HOLD, slowest * 1.6 + 3)
+            hold[0] = max(MIN_HOLD, slowest * 2.5 + 6)
             print(f"hold {hold[0]:6.1f}s  (slowest warm fetch {slowest:.1f}s)")
 
     profile = Path(tempfile.mkdtemp(prefix="shot-profile-"))

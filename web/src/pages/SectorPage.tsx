@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import { api, fmtPct, type RiskMetric } from "../api";
 import { TooltipCard } from "../charts/ChartTooltip";
-import { emphasisColors, type ChartBase } from "../charts/palette";
+import { emphasisColors, type ThemeName } from "../charts/palette";
 import { baselineScale } from "../charts/scale";
 import { Sparkline } from "../charts/Sparkline";
 import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
@@ -25,11 +25,11 @@ import { downloadCsv, type CsvCell } from "../csv";
  * the same keys - sector-index, risk-return, sparklines - so arriving here
  * costs no request that has not already been paid for.
  */
-export function SectorPage({ mode }: { mode: ChartBase }) {
+export function SectorPage({ theme }: { theme: ThemeName }) {
   const [windowDays, setWindow] = useUrlNumber("window", METRIC_WINDOWS, 365, "replace");
   const sector = useUrlOptional("sector", 64);
   const pins = usePins();
-  const { primary } = emphasisColors(mode);
+  const { primary } = emphasisColors(theme);
 
   const index = useQuery({
     queryKey: ["sector-index", windowDays],
@@ -211,7 +211,7 @@ export function SectorPage({ mode }: { mode: ChartBase }) {
                 <td className="align-left">{r.name}</td>
                 <td>
                   {spark.has(r.ticker)
-                    ? <Sparkline closes={spark.get(r.ticker)!} mode={mode} width={84} height={20} />
+                    ? <Sparkline closes={spark.get(r.ticker)!} theme={theme} width={84} height={20} />
                     : <span className="muted">—</span>}
                 </td>
                 <td>{r.total_return == null ? "—" : fmtPct(r.total_return)}</td>

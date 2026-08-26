@@ -10,7 +10,7 @@
  *
  * Surfaces were validated against the chart series palette before being added -
  * checked with web/scripts/validate_palette.js. Chart SERIES colours are not here;
- * they live in charts/palette.ts, keyed by a theme's chartBase.
+ * they live in charts/palette.ts, one validated set per theme.
  *
  * The dark block used to be duplicated between the media query and the
  * [data-theme] scope, and had already drifted on --good/--critical. The media

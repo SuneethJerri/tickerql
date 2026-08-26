@@ -1,4 +1,4 @@
-import { emphasisColors, type ChartBase } from "./palette";
+import { emphasisColors, type ThemeName } from "./palette";
 
 /** A price shape, inline in a table row.
  *
@@ -12,16 +12,16 @@ import { emphasisColors, type ChartBase } from "./palette";
  * ends above where it started is readable as such without an axis.
  */
 export function Sparkline({
-  closes, mode, width = 96, height = 24,
+  closes, theme, width = 96, height = 24,
 }: {
   closes: readonly number[];
-  mode: ChartBase;
+  theme: ThemeName;
   width?: number;
   height?: number;
 }) {
   if (closes.length < 2) return <span className="muted">—</span>;
 
-  const { primary } = emphasisColors(mode);
+  const { primary } = emphasisColors(theme);
   const low = Math.min(...closes);
   const high = Math.max(...closes);
   // A flat series would divide by zero and, worse, draw a line at the top of

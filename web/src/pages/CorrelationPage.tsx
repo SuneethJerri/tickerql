@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { CorrelationHeatmap, type HeatValue } from "../charts/CorrelationHeatmap";
-import type { ChartBase } from "../charts/palette";
+import type { ThemeName } from "../charts/palette";
 import { downloadCsv } from "../csv";
 import {
   Card, ErrorNotice, Loading, WindowPicker,
@@ -22,7 +22,7 @@ import { setUrlParams, useUrlNumber, useUrlOptional } from "../urlState";
  * correlation of sector indices - averaging the pairs answers "do these two
  * groups move together", which is the question the grid is being read for.
  */
-export function CorrelationPage({ mode }: { mode: ChartBase }) {
+export function CorrelationPage({ theme }: { theme: ThemeName }) {
   const [windowDays, setWindow] = useUrlNumber(
     "window", CORRELATION_WINDOWS, 365, "replace",
   );
@@ -155,14 +155,14 @@ export function CorrelationPage({ mode }: { mode: ChartBase }) {
           <CorrelationHeatmap
             labels={drillLabels}
             cellAt={(a, b) => model.pairs.get(`${a}|${b}`)}
-            mode={mode}
+            theme={theme}
             unit="shared days"
           />
         ) : (
           <CorrelationHeatmap
             labels={model.sectors}
             cellAt={(a, b) => model.sectorCells.get(`${a}|${b}`)}
-            mode={mode}
+            theme={theme}
             unit="pairs"
             onSelect={(a, b) => setDrill([a, b])}
           />

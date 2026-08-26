@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, fmtPct, type SectorPerformance } from "../api";
 import { SectorIndexChart } from "../charts/SectorIndexChart";
 import { PriceMaChart } from "../charts/PriceMaChart";
-import type { ChartBase } from "../charts/palette";
+import type { ThemeName } from "../charts/palette";
 import { StatTile } from "../components/StatTile";
 import { TableView, type Column } from "../components/TableView";
 import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
@@ -11,7 +11,7 @@ import { usePins } from "../pins";
 import { PinnedStrip } from "../components/PinnedStrip";
 import { AskAbout } from "../components/AskAbout";
 
-export function Dashboard({ mode }: { mode: ChartBase }) {
+export function Dashboard({ theme }: { theme: ThemeName }) {
   // "replace", not "push": these refine the current view, and flicking through
   // 30d/90d/365d should not bury the previous tab under three history entries.
   const [windowDays, setWindow] = useUrlNumber("window", METRIC_WINDOWS, 365, "replace");
@@ -62,7 +62,7 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
         </div>
       </header>
 
-      <PinnedStrip pins={pins} windowDays={windowDays} mode={mode} />
+      <PinnedStrip pins={pins} windowDays={windowDays} theme={theme} />
 
       <div className="controls">
         <WindowPicker value={windowDays} onChange={setWindow} />
@@ -116,7 +116,7 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
             <>
               <SectorIndexChart
                 data={index.data!}
-                mode={mode}
+                theme={theme}
                 onSelect={(s) => setUrlParams({ tab: "sector", sector: s }, "push")}
               />
               <SectorTable rows={perf.data ?? []} windowDays={windowDays} />
@@ -129,7 +129,7 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
           subtitle="Close price with 20, 50 and 200-day averages. Averages are computed over full history, so the left edge is not a truncated series."
         >
           {ma.isPending ? <Loading /> : ma.error ? <ErrorNotice error={ma.error} /> : (
-            <PriceMaChart series={ma.data!} mode={mode} />
+            <PriceMaChart series={ma.data!} theme={theme} />
           )}
         </Card>
       </div>

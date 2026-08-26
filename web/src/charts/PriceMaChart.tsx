@@ -2,7 +2,7 @@ import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import type { MovingAverageSeries } from "../api";
-import { MARK, emphasisColors, type ChartBase } from "./palette";
+import { MARK, emphasisColors, type ThemeName } from "./palette";
 import { Legend, TooltipCard } from "./ChartTooltip";
 
 /** Close price with moving-average overlays - an EMPHASIS form.
@@ -12,8 +12,8 @@ import { Legend, TooltipCard } from "./ChartTooltip";
  * thing the reader came for. So: price in the accent hue, averages in
  * de-emphasis grays at a thinner stroke.
  */
-export function PriceMaChart({ series, mode }: { series: MovingAverageSeries; mode: ChartBase }) {
-  const { primary, context } = emphasisColors(mode);
+export function PriceMaChart({ series, theme }: { series: MovingAverageSeries; theme: ThemeName }) {
+  const { primary, context } = emphasisColors(theme);
   const windows = [...series.windows].sort((a, b) => a - b);
 
   const byDate = new Map<string, Record<string, number | string>>();

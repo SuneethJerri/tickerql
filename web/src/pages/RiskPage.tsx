@@ -2,14 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { api, fmtCompact, fmtPct, type RiskMetric } from "../api";
 import { RiskReturnScatter } from "../charts/RiskReturnScatter";
 import { Sparkline } from "../charts/Sparkline";
-import { assetTypeColor, type ChartBase } from "../charts/palette";
+import { assetTypeColor, type ThemeName } from "../charts/palette";
 import { TableView, type Column } from "../components/TableView";
 import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
 import { PinButton } from "../components/PinButton";
 import { usePins } from "../pins";
 import { setUrlParams, useUrlNumber } from "../urlState";
 
-export function RiskPage({ mode }: { mode: ChartBase }) {
+export function RiskPage({ theme }: { theme: ThemeName }) {
   const [windowDays, setWindow] = useUrlNumber("window", METRIC_WINDOWS, 365, "replace");
   const pins = usePins();
   const risk = useQuery({
@@ -41,7 +41,7 @@ export function RiskPage({ mode }: { mode: ChartBase }) {
       // that the scatter only labels its extremes.
       cell: (r) => (
         <>
-          <span className="swatch" style={{ background: assetTypeColor(r.asset_type, mode) }} />
+          <span className="swatch" style={{ background: assetTypeColor(r.asset_type, theme) }} />
           <button
             className="link"
             onClick={() => setUrlParams({ tab: "asset", ticker: r.ticker })}
@@ -57,7 +57,7 @@ export function RiskPage({ mode }: { mode: ChartBase }) {
       // value, and exporting 52 numbers into one cell helps nobody.
       header: "Shape",
       value: (r) => r.total_return,
-      cell: (r) => <Sparkline closes={closesFor.get(r.ticker) ?? []} mode={mode} />,
+      cell: (r) => <Sparkline closes={closesFor.get(r.ticker) ?? []} theme={theme} />,
     },
     { header: "Sector", value: (r) => r.sector, align: "left" },
     {
@@ -99,7 +99,7 @@ export function RiskPage({ mode }: { mode: ChartBase }) {
       >
         {risk.isPending ? <Loading height={340} /> : risk.error ? <ErrorNotice error={risk.error} /> : (
           <>
-            <RiskReturnScatter data={risk.data!} mode={mode} />
+            <RiskReturnScatter data={risk.data!} theme={theme} />
             <TableView
               label="asset table"
               filename={`tickerql-risk-return-${windowDays}d`}

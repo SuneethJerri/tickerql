@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import { api, fmtPct, type RiskMetric } from "../api";
 import { TooltipCard } from "../charts/ChartTooltip";
-import { sectorColor, type ChartBase } from "../charts/palette";
+import { sectorColor, type ThemeName } from "../charts/palette";
 import { baselineScale } from "../charts/scale";
 import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
 import { PinButton } from "../components/PinButton";
@@ -30,7 +30,7 @@ import { downloadCsv, type CsvCell } from "../csv";
  * Weekly closes are the right resolution for a shape comparison, and the daily
  * detail nobody reads at this size would cost 135x the payload.
  */
-export function ComparePage({ mode }: { mode: ChartBase }) {
+export function ComparePage({ theme }: { theme: ThemeName }) {
   const [windowDays, setWindow] = useUrlNumber("window", METRIC_WINDOWS, 365, "replace");
   const pins = usePins();
 
@@ -120,7 +120,7 @@ export function ComparePage({ mode }: { mode: ChartBase }) {
                 <span key={s.ticker} className="legend-item">
                   <span
                     className="legend-key"
-                    style={{ background: sectorColor(s.ticker, chosen, mode) ?? "var(--text-muted)" }}
+                    style={{ background: sectorColor(s.ticker, chosen, theme) ?? "var(--text-muted)" }}
                   />
                   {s.ticker}
                   <PinButton ticker={s.ticker} pins={pins} compact />
@@ -159,7 +159,7 @@ export function ComparePage({ mode }: { mode: ChartBase }) {
                     key={s.ticker}
                     type="monotone"
                     dataKey={s.ticker}
-                    stroke={sectorColor(s.ticker, chosen, mode) ?? "var(--text-muted)"}
+                    stroke={sectorColor(s.ticker, chosen, theme) ?? "var(--text-muted)"}
                     strokeWidth={1.75}
                     dot={false}
                     isAnimationActive={false}

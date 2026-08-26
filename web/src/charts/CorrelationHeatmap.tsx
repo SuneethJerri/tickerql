@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { divergingColor, inkOn, type ChartBase } from "./palette";
+import { divergingColor, inkOn, type ThemeName } from "./palette";
 
 /** Correlation heatmap on a diverging scale.
  *
@@ -27,13 +27,13 @@ export interface HeatValue {
 export function CorrelationHeatmap({
   labels,
   cellAt,
-  mode,
+  theme,
   unit,
   onSelect,
 }: {
   labels: string[];
   cellAt: (a: string, b: string) => HeatValue | undefined;
-  mode: ChartBase;
+  theme: ThemeName;
   /** What one label names, for the hover readout: "days" or "pairs". */
   unit: string;
   onSelect?: (a: string, b: string) => void;
@@ -61,7 +61,7 @@ export function CorrelationHeatmap({
             rowLabel={rowLabel}
             labels={labels}
             cellAt={cellAt}
-            mode={mode}
+            theme={theme}
             unit={unit}
             onHover={setHover}
             onSelect={onSelect}
@@ -79,7 +79,7 @@ export function CorrelationHeatmap({
           { t: 1, label: "moves together" },
         ].map(({ t, label }) => (
           <span className="scale-key" key={label}>
-            <span className="scale-swatch" style={{ background: divergingColor(t, mode) }} />
+            <span className="scale-swatch" style={{ background: divergingColor(t, theme) }} />
             {label}
           </span>
         ))}
@@ -92,12 +92,12 @@ export function CorrelationHeatmap({
 }
 
 function Row({
-  rowLabel, labels, cellAt, mode, unit, onHover, onSelect,
+  rowLabel, labels, cellAt, theme, unit, onHover, onSelect,
 }: {
   rowLabel: string;
   labels: string[];
   cellAt: (a: string, b: string) => HeatValue | undefined;
-  mode: ChartBase;
+  theme: ThemeName;
   unit: string;
   onHover: (v: { a: string; b: string; v: number | null } | null) => void;
   onSelect?: (a: string, b: string) => void;
@@ -108,7 +108,7 @@ function Row({
       {labels.map((colLabel) => {
         const cell = cellAt(rowLabel, colLabel);
         const value = cell?.correlation ?? null;
-        const background = value == null ? "var(--surface-2)" : divergingColor(value, mode);
+        const background = value == null ? "var(--surface-2)" : divergingColor(value, theme);
         const title =
           `${rowLabel} vs ${colLabel}: ${value?.toFixed(3) ?? "no data"} ` +
           `(${cell?.observations ?? 0} ${unit})`;

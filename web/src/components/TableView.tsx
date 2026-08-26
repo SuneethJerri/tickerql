@@ -20,10 +20,13 @@ export interface Column<T> {
 
 /** Collapsible table beneath a chart.
  *
- * Required, not optional: three of the light-mode categorical slots sit below
- * 3:1 against the surface, and the validator's contrast WARN obliges relief -
- * visible labels or a table view. It is also the honest fallback for anyone who
- * cannot use the chart at all.
+ * This started as a contrast relief: three of the old light-mode categorical
+ * slots sat below 3:1 against the surface, and the validator's WARN obliges
+ * relief - visible labels or a table view. The per-theme palettes cleared that,
+ * and every slot in every theme now passes 3:1 on its own surface, so nothing
+ * requires this any more. It stays because the other reason it was here has not
+ * changed: it is the honest fallback for anyone who cannot use the chart at
+ * all, and the export lives on it.
  */
 export function TableView<T>({
   columns,

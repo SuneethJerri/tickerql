@@ -1,6 +1,6 @@
 import { Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } from "recharts";
 import type { SectorIndexPoint } from "../api";
-import { MARK, emphasisColors, type ChartBase } from "./palette";
+import { MARK, emphasisColors, type ThemeName } from "./palette";
 import { TooltipCard } from "./ChartTooltip";
 import { baselineScale } from "./scale";
 
@@ -19,17 +19,17 @@ import { baselineScale } from "./scale";
  */
 export function SectorIndexChart({
   data,
-  mode,
+  theme,
   onSelect,
 }: {
   data: SectorIndexPoint[];
-  mode: ChartBase;
+  theme: ThemeName;
   /** Given, each panel becomes a button that drills into that sector. The
    *  chart stays usable without it - the correlation page renders the same
    *  panels with nothing to drill into. */
   onSelect?: (sector: string) => void;
 }) {
-  const { primary } = emphasisColors(mode);
+  const { primary } = emphasisColors(theme);
 
   const bySector = new Map<string, { date: string; value: number }[]>();
   for (const point of data) {

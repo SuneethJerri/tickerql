@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import type { RiskMetric } from "../api";
 import { fmtPct } from "../api";
-import { MARK, assetTypeColor, type ChartBase } from "./palette";
+import { MARK, assetTypeColor, type ThemeName } from "./palette";
 import { Legend, TooltipCard } from "./ChartTooltip";
 
 /** Evenly spaced ticks inside a domain.
@@ -47,7 +47,7 @@ function evenTicks([lo, hi]: [number, number], intervals = 4): number[] {
  * identity and became noise. Only the extremes are labelled now: the corners a
  * reader actually asks about. Everything else is hover plus the table.
  */
-export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: ChartBase }) {
+export function RiskReturnScatter({ data, theme }: { data: RiskMetric[]; theme: ThemeName }) {
   const usable = data.filter(
     (d) => d.annualized_volatility != null && d.annualized_return != null,
   );
@@ -110,8 +110,8 @@ export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Ch
     <>
       <Legend
         items={[
-          { label: "Equities", color: assetTypeColor("stock", mode), shape: "dot" },
-          { label: "Crypto", color: assetTypeColor("crypto", mode), shape: "dot" },
+          { label: "Equities", color: assetTypeColor("stock", theme), shape: "dot" },
+          { label: "Crypto", color: assetTypeColor("crypto", theme), shape: "dot" },
         ]}
       />
       <ResponsiveContainer width="100%" height={340}>
@@ -165,7 +165,7 @@ export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Ch
             { rows: crypto, type: "crypto" as const },
           ].map(({ rows, type }) => (
             <Scatter
-              key={type} data={rows.map(toPoint)} fill={assetTypeColor(type, mode)}
+              key={type} data={rows.map(toPoint)} fill={assetTypeColor(type, theme)}
               // 2px surface ring keeps overlapping points legible.
               stroke="var(--surface-1)" strokeWidth={MARK.surfaceRing}
               isAnimationActive={false}

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, fmtPct, type RiskMetric, type SparklineSeries } from "../api";
-import type { ChartBase } from "../charts/palette";
+import type { ThemeName } from "../charts/palette";
 import { Sparkline } from "../charts/Sparkline";
 import type { Pins } from "../pins";
 import { setUrlParams } from "../urlState";
@@ -17,11 +17,11 @@ import { setUrlParams } from "../urlState";
  * is most people; the affordance lives where the assets are instead.
  */
 export function PinnedStrip({
-  pins, windowDays, mode,
+  pins, windowDays, theme,
 }: {
   pins: Pins;
   windowDays: number;
-  mode: ChartBase;
+  theme: ThemeName;
 }) {
   const risk = useQuery({
     queryKey: ["risk-return", windowDays],
@@ -64,7 +64,7 @@ export function PinnedStrip({
             >
               <span className="pin-ticker">{t}</span>
               {s ? (
-                <Sparkline closes={s.closes} mode={mode} width={84} height={22} />
+                <Sparkline closes={s.closes} theme={theme} width={84} height={22} />
               ) : (
                 <span className="muted">—</span>
               )}

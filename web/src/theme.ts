@@ -2,12 +2,14 @@
  *
  * There used to be two independent `Mode` unions, one here and one in
  * charts/palette.ts, that typechecked against each other by accident. There is
- * now one `ThemeName`, and chart code asks a theme for its `chartBase` rather
- * than assuming the theme name is also a chart mode.
+ * now one `ThemeName`, and chart code keys on it directly.
  *
- * Every surface below was run through the dataviz validator against the
+ * Every surface below was run through the dataviz validator against its OWN
  * categorical set in charts/palette.ts, adjacent and all-pairs, before being
- * added. Check a new surface with web/scripts/validate_palette.js.
+ * added. Adding a theme here is therefore not enough on its own: run
+ * web/scripts/build_palettes.mjs, which reads this table, searches that
+ * surface for a set that clears every gate, and prints the block to paste into
+ * charts/palette.ts. A theme with no set of its own will not compile.
  */
 
 export const THEME_NAMES = ["light", "dark", "midnight", "graphite", "sepia"] as const;
@@ -26,9 +28,11 @@ export type ThemeName = (typeof THEME_NAMES)[number];
 export const ACCENT_NAMES = ["teal", "plum", "ochre", "oxblood"] as const;
 export type AccentName = (typeof ACCENT_NAMES)[number];
 
-/** Which set of chart series steps a theme uses. Series colours are selected
- *  for a light or a dark surface; a theme picks the set its surface belongs to
- *  rather than each theme carrying its own hexes. */
+/** Which band of the validator a surface is measured in - OKLCH L 0.43-0.77
+ *  for a light ground, 0.48-0.67 for a dark one. This is no longer what picks
+ *  a theme's colours (every theme has its own set now); it is the one fact
+ *  about a surface the palette generator cannot infer, and it lives here so
+ *  there is one copy of it rather than one here and one in the script. */
 export type ChartBase = "light" | "dark";
 
 export interface Theme {

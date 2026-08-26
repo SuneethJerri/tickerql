@@ -1,7 +1,7 @@
 import {
   Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { MARK, emphasisColors, type ChartBase } from "./palette";
+import { MARK, emphasisColors, type ThemeName } from "./palette";
 import { TooltipCard } from "./ChartTooltip";
 
 export interface DrawdownPoint {
@@ -23,12 +23,12 @@ export interface DrawdownPoint {
  * number cannot tell you.
  */
 export function DrawdownChart({
-  points, mode,
+  points, theme,
 }: {
   points: DrawdownPoint[];
-  mode: ChartBase;
+  theme: ThemeName;
 }) {
-  const { primary } = emphasisColors(mode);
+  const { primary } = emphasisColors(theme);
   const worst = points.reduce((low, p) => Math.min(low, p.drawdown), 0);
 
   // Explicit ticks on a round step. Left to recharts the domain divided into

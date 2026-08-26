@@ -27,7 +27,7 @@ const TAB_IDS = TABS.map((t) => t.id);
 
 export default function App() {
   const [tab, setTab] = useUrlEnum<Tab>("tab", TAB_IDS, "dashboard");
-  const { chartBase, accent, choice, setTheme, setAccent } = useTheme();
+  const { theme, accent, choice, setTheme, setAccent } = useTheme();
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 60_000 });
 
   return (
@@ -87,12 +87,12 @@ export default function App() {
       </header>
 
       <main className="content">
-        {tab === "dashboard" && <Dashboard mode={chartBase} />}
-        {tab === "sector" && <SectorPage mode={chartBase} />}
-        {tab === "risk" && <RiskPage mode={chartBase} />}
-        {tab === "correlation" && <CorrelationPage mode={chartBase} />}
-        {tab === "asset" && <AssetPage mode={chartBase} />}
-        {tab === "compare" && <ComparePage mode={chartBase} />}
+        {tab === "dashboard" && <Dashboard theme={theme} />}
+        {tab === "sector" && <SectorPage theme={theme} />}
+        {tab === "risk" && <RiskPage theme={theme} />}
+        {tab === "correlation" && <CorrelationPage theme={theme} />}
+        {tab === "asset" && <AssetPage theme={theme} />}
+        {tab === "compare" && <ComparePage theme={theme} />}
         {tab === "ask" && <AskPage />}
       </main>
     </div>

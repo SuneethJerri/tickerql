@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, fmtCompact, fmtPct, type PriceBar, type RiskMetric } from "../api";
 import { PriceMaChart } from "../charts/PriceMaChart";
 import { DrawdownChart, type DrawdownPoint } from "../charts/DrawdownChart";
-import type { ChartBase } from "../charts/palette";
+import type { ThemeName } from "../charts/palette";
 import { StatTile } from "../components/StatTile";
 import { TableView, type Column } from "../components/TableView";
 import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
@@ -19,7 +19,7 @@ import { useUrlNumber, useUrlString } from "../urlState";
  * you with. It is a real tab rather than a modal so it is linkable: ?tab=asset
  * &ticker=NVDA is the whole address.
  */
-export function AssetPage({ mode }: { mode: ChartBase }) {
+export function AssetPage({ theme }: { theme: ThemeName }) {
   // "push" here, unlike on the dashboard: on this page the ticker IS the view,
   // so `back` should return to the asset you were looking at before.
   const [ticker, setTicker] = useUrlString("ticker", "AAPL", "push");
@@ -125,7 +125,7 @@ export function AssetPage({ mode }: { mode: ChartBase }) {
               }
             >
               {ma.isPending ? <Loading /> : ma.error ? <ErrorNotice error={ma.error} /> : (
-                <PriceMaChart series={ma.data!} mode={mode} />
+                <PriceMaChart series={ma.data!} theme={theme} />
               )}
             </Card>
 
@@ -135,7 +135,7 @@ export function AssetPage({ mode }: { mode: ChartBase }) {
             >
               {prices.isPending ? <Loading height={200} /> : (
                 <>
-                  <DrawdownChart points={drawdown} mode={mode} />
+                  <DrawdownChart points={drawdown} theme={theme} />
                   <TableView
                     label="drawdown series"
                     filename={`tickerql-${ticker}-drawdown-${windowDays}d`}
