@@ -17,7 +17,12 @@ solved here rather than in the app:
    script is injected ahead of index.html's own pre-paint script, so the theme
    is stamped before first paint exactly as it would be for a returning user.
 
-There used to be a third: tabs lived in useState, so the seed script had to
+3. The slowest endpoint takes ~23s cold, so a hold that is generous everywhere
+   else still photographed a loading skeleton - and nothing about a skeleton
+   looks like a failure. Every endpoint the views need is fetched once before
+   the first browser starts, and the timings are printed.
+
+There used to be a fourth: tabs lived in useState, so the seed script had to
 find the nav button by its label text and click it. Now that view state is in
 the URL, a tab is just `?tab=risk` and the clicking is gone - along with the
 race it carried, where a shot taken before React mounted silently captured the
@@ -47,6 +52,25 @@ from pathlib import Path
 
 THEMES = ["system", "light", "dark", "midnight", "graphite", "sepia"]
 TABS = ["dashboard", "risk", "correlation", "asset", "ask"]
+
+# Fetched once before the first shot, through the same proxy the browser uses.
+#
+# Not an optimisation. The correlation endpoint takes ~23s on a cold Neon and
+# ~6s warm, so a --hold that is generous for every other view still captured a
+# loading skeleton for that one - and a skeleton screenshots perfectly happily.
+# Three of twenty-four shots in the first Phase 7 pass were skeletons, and the
+# only hint was that their PNGs were smaller than their neighbours'. A gate
+# that silently photographs the wrong thing is worse than no gate.
+MIN_HOLD = 6.0
+
+WARM = [
+    "/api/analytics/correlation?window=365",
+    "/api/analytics/risk-return?window=365",
+    "/api/analytics/sparklines?window=365",
+    "/api/analytics/sector-index?window=365",
+    "/api/analytics/sector-performance?window=365",
+    "/api/assets",
+]
 
 # The display labels the old --tabs took, so existing invocations keep working.
 TAB_ALIASES = {
@@ -134,7 +158,7 @@ def content_type(headers: dict) -> str:
     return ""
 
 
-def make_handler(upstream: str, hold_seconds: float):
+def make_handler(upstream: str, hold_seconds: list[float]):
     class Handler(http.server.BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -144,7 +168,7 @@ def make_handler(upstream: str, hold_seconds: float):
         def do_GET(self):  # noqa: N802
             if self.path.startswith("/__hold"):
                 # Held open so the browser's load event waits for the data.
-                time.sleep(hold_seconds)
+                time.sleep(hold_seconds[0])
                 body = bytes.fromhex(
                     "47494638396101000100800000ffffff00000021f90401000000002c"
                     "00000000010001000002024401003b"
@@ -248,7 +272,11 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=5199)
     parser.add_argument("--width", type=int, default=1440)
     parser.add_argument("--height", type=int, default=900)
-    parser.add_argument("--hold", type=float, default=6.0)
+    parser.add_argument(
+        "--hold", type=float, default=None,
+        help="Seconds to hold the load event. Default: derived from how long "
+             "the slowest warm fetch took, with a floor of 6s.",
+    )
     parser.add_argument("--themes", default=",".join(THEMES))
     parser.add_argument("--tabs", default=",".join(TABS))
     parser.add_argument("--accent", default="blue")
@@ -261,6 +289,11 @@ def main() -> int:
         help="Type this question into the Ask form and submit it before shooting.",
     )
     parser.add_argument("--browser", default="zen-browser")
+    parser.add_argument(
+        "--no-warm", action="store_true",
+        help="Skip the pre-warm fetches. Only for shooting a view whose data is "
+             "already cached, or an app with the API down on purpose.",
+    )
     args = parser.parse_args()
 
     if not shutil.which(args.browser):
@@ -268,8 +301,34 @@ def main() -> int:
         return 1
 
     args.out.mkdir(parents=True, exist_ok=True)
-    server = Server(("127.0.0.1", args.port), make_handler(args.upstream, args.hold))
+    hold = [args.hold if args.hold is not None else MIN_HOLD]
+    server = Server(("127.0.0.1", args.port), make_handler(args.upstream, hold))
     threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    if not args.no_warm:
+        slowest = 0.0
+        for path in WARM:
+            started = time.monotonic()
+            try:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{args.port}{path}", timeout=180
+                ) as response:
+                    response.read()
+                    note = f"{response.status}"
+            except OSError as exc:
+                note = f"FAILED {exc}"
+            took = time.monotonic() - started
+            slowest = max(slowest, took)
+            print(f"warm {took:6.1f}s  {note:>6}  {path}")
+
+        # Warming only warms Postgres - there is no cache in front of the API -
+        # so the browser still pays the warm cost, and the hold has to cover it.
+        # A fixed default cannot: it was 6s, the correlation query is 23s cold
+        # and ~7s warm, and the shots that fell short came out as loading
+        # skeletons rather than as failures. Measured, then, not guessed.
+        if args.hold is None:
+            hold[0] = max(MIN_HOLD, slowest * 1.6 + 3)
+            print(f"hold {hold[0]:6.1f}s  (slowest warm fetch {slowest:.1f}s)")
 
     profile = Path(tempfile.mkdtemp(prefix="shot-profile-"))
     failures = 0
