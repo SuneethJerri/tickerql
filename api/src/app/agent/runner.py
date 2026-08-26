@@ -81,6 +81,22 @@ class AgentRefused(RuntimeError):
     """Raised when the model declines the request (stop_reason == 'refusal')."""
 
 
+class ModelCallFailed(RuntimeError):
+    """An upstream model call that came back with an HTTP status.
+
+    Carries the status so the router can tell a rejected credential - a
+    configuration problem only an operator can fix - from a gateway hiccup the
+    caller can usefully retry. Every one of them used to surface as the same
+    502, "The language model call failed.", which is why a revoked key took a
+    dive through the deploy logs to identify rather than being legible from the
+    response.
+    """
+
+    def __init__(self, status: int) -> None:
+        super().__init__(f"The model provider returned HTTP {status}.")
+        self.status = status
+
+
 class MessagesClient(Protocol):
     """The slice of the Anthropic client this module uses.
 
@@ -209,7 +225,18 @@ class SqlAgent:
         # unknown field, so a blank effort omits it entirely.
         if self._effort:
             kwargs["output_config"] = {"effort": self._effort}
-        return self._client.create(**kwargs)
+        try:
+            return self._client.create(**kwargs)
+        except Exception as exc:  # noqa: BLE001
+            # The client is a narrow Protocol so a test double can stand in for
+            # it, which means this module must not import one SDK's exception
+            # classes. Every HTTP client in this space hangs the upstream
+            # status on the exception, so that is what is duck-typed; anything
+            # without one propagates unchanged and still becomes a 502.
+            status = getattr(exc, "status_code", None)
+            if isinstance(status, int):
+                raise ModelCallFailed(status) from exc
+            raise
 
     def _run_tool(
         self, candidate: str, emit: Progress

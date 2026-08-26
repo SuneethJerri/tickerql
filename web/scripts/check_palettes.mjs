@@ -13,12 +13,60 @@
  */
 import { readFileSync } from "node:fs";
 import { validate, contrast } from "./validate_palette.js";
-import { THEMES } from "../src/theme.ts";
+import { THEMES, ACCENTS } from "../src/theme.ts";
 
 const CVD_MIN = 8.0;
 const CONTRAST_MIN = 3.0;
+const ACCENT_MIN_DE = 15.0;
+const NORMAL_MIN = 15.0;
+const TEXT_MIN = 4.5;
 
 const source = readFileSync(new URL("../src/charts/palette.ts", import.meta.url), "utf8");
+const css = readFileSync(new URL("../src/styles.css", import.meta.url), "utf8")
+  // Comments first: a block comment sitting above a rule is otherwise
+  // captured as part of that rule's selector, and the rule is lost.
+  .replace(/\/\*[\s\S]*?\*\//g, "");
+
+// ── colour maths for the gates the validator does not cover ──────────────────
+const s2lin = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+const hexLin = (h) => {
+  const n = parseInt(h.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => s2lin(v / 255));
+};
+function oklab([r, g, b]) {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s_ = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s_,
+    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s_,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s_,
+  ];
+}
+const deltaE = (a, b) => {
+  const x = oklab(hexLin(a)), y = oklab(hexLin(b));
+  return 100 * Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]);
+};
+
+/** Every `selector { ... }` rule in the stylesheet, as selector -> declarations.
+ *  Parsed once rather than regex-escaping a selector at each call site, which
+ *  is where the first version of this went wrong. */
+const RULES = new Map();
+for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+  for (const selector of m[1].split(",")) {
+    const key = selector.trim().replace(/\s+/g, " ");
+    if (!key || key.startsWith("@") || key.startsWith("/*")) continue;
+    RULES.set(key, (RULES.get(key) ?? "") + m[2]);
+  }
+}
+
+/** A custom property's value on one selector, or null. */
+function cssVar(selector, prop) {
+  const decls = RULES.get(selector);
+  if (!decls) return null;
+  const all = [...decls.matchAll(new RegExp(`--${prop}:\\s*(#[0-9a-fA-F]{6})`, "g"))];
+  return all.length ? all[all.length - 1][1].toLowerCase() : null;
+}
 
 /** Pull `name: [...]` rows out of one `const NAME = { ... } as const;` block. */
 function table(name) {
@@ -51,7 +99,7 @@ for (const name of themeNames) {
     failed = true;
     continue;
   }
-  const { surface, chartBase: mode } = THEMES[name];
+  const { surface, panel, chartBase: mode } = THEMES[name];
   const adj = validate(palette, { mode, surface });
   const trio = validate(palette.slice(0, 3), { mode, surface, pairs: "all" });
 
@@ -70,6 +118,38 @@ for (const name of themeNames) {
   const worstContrast = Math.min(...palette.map((c) => contrast(c, surface)));
   if (worstContrast < CONTRAST_MIN) problems.push(`contrast ${worstContrast.toFixed(2)}:1 below ${CONTRAST_MIN}`);
 
+  // CHROME WEARS INK. Not something the dataviz validator knows about - it
+  // measures a palette against itself and its surface, and has no concept of
+  // the app's buttons. This is the gate the first per-theme generator missed.
+  let worstAccent = Infinity, accentPair = "";
+  for (const [accentName, accent] of Object.entries(ACCENTS)) {
+    const hex = accent.hex[mode];
+    for (const c of palette) {
+      const d = deltaE(hex, c);
+      if (d < worstAccent) { worstAccent = d; accentPair = `${accentName} ${hex} vs series ${c}`; }
+    }
+  }
+  if (worstAccent < ACCENT_MIN_DE) {
+    problems.push(`accent collision: dE ${worstAccent.toFixed(1)} — ${accentPair}`);
+  }
+
+  // The SQL syntax colours, read out of the stylesheet that actually ships
+  // them. They are TEXT on --surface-2, so the gate is 4.5:1, not 3:1.
+  const selector = name === "light" ? ":root" : `:root[data-theme="${name}"]`;
+  const ink = ["sql-kw", "sql-lit", "sql-id"].map((v) => cssVar(selector, v));
+  if (ink.some((c) => !c)) {
+    problems.push(`no --sql-* declarations found for ${name}`);
+  } else {
+    for (const [i, c] of ink.entries()) {
+      const r = contrast(c, panel);
+      if (r < TEXT_MIN) problems.push(`SQL ${["kw", "lit", "id"][i]} ${c} is ${r.toFixed(2)}:1 on ${panel}, below ${TEXT_MIN}`);
+    }
+    for (const [i, j] of [[0, 1], [0, 2], [1, 2]]) {
+      const d = deltaE(ink[i], ink[j]);
+      if (d < NORMAL_MIN) problems.push(`SQL ${ink[i]} and ${ink[j]} are dE ${d.toFixed(1)} apart`);
+    }
+  }
+
   if (problems.length) {
     failed = true;
     console.log(`${name.padEnd(9)} FAIL`);
@@ -78,7 +158,8 @@ for (const name of themeNames) {
     console.log(
       `${name.padEnd(9)} pass  adjacent CVD ${cvd(adj).toFixed(1)} · normal ` +
       `${/ΔE ([\d.]+) \(normal\)/.exec(adj.report.find(([n]) => n === "Normal-vision floor")[2])[1]} · ` +
-      `trio CVD ${cvd(trio).toFixed(1)} · min contrast ${worstContrast.toFixed(2)}:1`,
+      `trio CVD ${cvd(trio).toFixed(1)} · min contrast ${worstContrast.toFixed(2)}:1 · ` +
+      `accent dE ${worstAccent.toFixed(1)}`,
     );
   }
 }
@@ -91,6 +172,27 @@ for (const table_ of ["PRIMARY", "CONTEXT_GREYS", "DIVERGING"]) {
   const missing = themeNames.filter((t) => !covered.includes(t));
   if (missing.length) {
     console.log(`${table_} FAIL  missing: ${missing.join(", ")}`);
+    failed = true;
+  }
+}
+
+// theme.ts carries the surfaces and the accent hexes so the generator can read
+// them; styles.css carries them because that is what paints the page. Neither
+// can import the other, so the only thing keeping them honest is this.
+for (const [name, t] of Object.entries(THEMES)) {
+  const selector = `:root[data-theme="${name}"]`;
+  for (const [prop, expected] of [["surface-1", t.surface], ["surface-2", t.panel]]) {
+    const actual = cssVar(selector, prop);
+    if (actual && actual !== expected.toLowerCase()) {
+      console.log(`DRIFT   ${name} --${prop} is ${actual} in styles.css, ${expected} in theme.ts`);
+      failed = true;
+    }
+  }
+}
+for (const [name, a] of Object.entries(ACCENTS)) {
+  const light = cssVar(":root", `hue-${name}`);
+  if (light && light !== a.hex.light.toLowerCase()) {
+    console.log(`DRIFT   accent ${name} light is ${light} in styles.css, ${a.hex.light} in theme.ts`);
     failed = true;
   }
 }

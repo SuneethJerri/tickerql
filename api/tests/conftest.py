@@ -83,3 +83,21 @@ def universe(owner_url) -> dict:
 @pytest.fixture(scope="session")
 def asset_count(universe) -> int:
     return universe["count"]
+
+
+@pytest.fixture(autouse=True)
+def _reset_query_rate_limiter():
+    """Give every test its own rate-limit window.
+
+    The limiter is module state on the router and was only being reset inside
+    test_ratelimit.py, so the quota leaked between every other test in the
+    session. Nothing noticed until a parametrised case pushed the query-endpoint
+    tests past the limit and two of them started failing with 429 - by
+    position in the file, not by anything they asserted. Resetting here rather
+    than in one file makes that class of ordering dependency impossible.
+    """
+    from app.routers import query as query_router
+
+    query_router._limiter.reset()
+    yield
+    query_router._limiter.reset()

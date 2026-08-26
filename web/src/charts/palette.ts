@@ -14,14 +14,22 @@
  * surface and every one of them clears, measured by the vendored validator:
  *
  *   theme     adjacent CVD   normal-vision   trio all-pairs   min contrast
- *   light        14.0            24.5           18.5 / 24.5      3.40:1
- *   sepia        12.8            26.7           15.0 / 27.1      3.08:1
+ *   light        12.6            24.7           16.3 / 23.3      3.21:1
+ *   sepia        13.7            20.8           13.7 / 19.8      3.08:1
  *   dark         12.1            22.1           11.6 / 22.1      3.60:1
- *   midnight     12.3            21.2           11.2 / 21.0      3.63:1
- *   graphite     13.3            21.4           12.1 / 19.7      3.60:1
+ *   midnight     11.6            22.0           11.2 / 21.0      3.61:1
+ *   graphite     13.4            21.9           12.1 / 19.7      3.60:1
  *
  * against gates of 8.0 (CVD), 15.0 (normal vision) and 3.0:1 (contrast). The
  * shipped sets they replace cleared CVD at 8.4 and 9.1.
+ *
+ * A fourth gate constrains the search and is not visible in that table: every
+ * hue is OKLab dE >= 15 from all four accents in its base. CHROME WEARS INK -
+ * a button the same colour as a line destroys the only cue the page has for
+ * which saturated things carry meaning. The first version of this generator
+ * did not know about the accents and produced a set with a series hue dE 5.1
+ * from the Plum accent, which is the failure the accents were redesigned to
+ * fix in the first place.
  *
  * Eight slots still pass ADJACENT (lines, bars, stacks) and only the first
  * three pass ALL-PAIRS (scatter, small multiples), so `sectorColor` returns
@@ -47,11 +55,11 @@ export type { ThemeName } from "../theme";
  *  neighbouring slots are the furthest apart the set allows - that ordering is
  *  what the adjacent pairlist is measured on. */
 const CATEGORICAL = {
-  light: ["#84330b", "#1d9680", "#2e4aa3", "#a7821a", "#7e439e", "#548716", "#952a5b", "#1d92b2"],
-  sepia: ["#a2351b", "#1f9e7c", "#154b9f", "#b6831c", "#70419e", "#76971b", "#9f3971", "#1f9ab2"],
-  dark: ["#cd6987", "#477f2e", "#22a3d0", "#b35925", "#23ab9b", "#985aac", "#b1921e", "#5d6ebb"],
-  midnight: ["#9f5799", "#9e961d", "#359ddc", "#ca7b2f", "#23a9aa", "#b84f5b", "#8b85df", "#3f9c5b"],
-  graphite: ["#bf649a", "#768b19", "#5697e8", "#c66658", "#21a0b3", "#ad7719", "#9274c4", "#23ae81"],
+  light: ["#1f98b3", "#d26443", "#1246ac", "#1f9c7e", "#905dbc", "#6b921a", "#d41d88", "#b1831b"],
+  dark: ["#cd6987", "#477f2e", "#22a3d0", "#b35925", "#23aa99", "#985aac", "#b1921e", "#5d6ebb"],
+  midnight: ["#359ddc", "#797314", "#9f5799", "#3f9c5b", "#8b85df", "#ca7b2f", "#22a6a7", "#b84f5b"],
+  graphite: ["#bf649a", "#768b19", "#5697e8", "#d86c5c", "#22a5b8", "#ad7719", "#9f7fd5", "#23ae81"],
+  sepia: ["#bb538a", "#76971b", "#8119ca", "#b6831c", "#1f9ab2", "#c7583e", "#346cc4", "#1f9e7c"],
 } as const;
 
 /** The one hue behind every sparkline, every small-multiple panel and the
@@ -61,11 +69,11 @@ const CATEGORICAL = {
  *  be the exact failure the generator's avoid-arc exists to prevent, so it
  *  takes the member nearest amber instead. */
 const PRIMARY = {
-  light: "#2e4aa3",
-  sepia: "#154b9f",
+  light: "#1246ac",
   dark: "#22a3d0",
   midnight: "#ca7b2f",
   graphite: "#5697e8",
+  sepia: "#346cc4",
 } as const;
 
 /** Context neutrals, carrying the surface's own hue at near-zero chroma. The
@@ -74,10 +82,10 @@ const PRIMARY = {
  *  Midnight's are cool rather than one grey serving both. */
 const CONTEXT_GREYS = {
   light: ["#717579", "#91969a", "#b0b5b9"],
-  sepia: ["#76746f", "#979590", "#b6b4af"],
   dark: ["#84837e", "#666661", "#4d4d48"],
   midnight: ["#818388", "#64666b", "#4b4d52"],
   graphite: ["#828288", "#65656b", "#4c4c51"],
+  sepia: ["#76746f", "#979590", "#b6b4af"],
 } as const;
 
 /** Diverging poles for correlation: warm and cool, with a neutral midpoint that
@@ -86,11 +94,11 @@ const CONTEXT_GREYS = {
  *  result. blue-to-aqua was rejected upstream for exactly that reason: two cool
  *  hues, and a midpoint that reads as a value. */
 const DIVERGING = {
-  light: { negative: "#2168bb", mid: "#ebeff2", positive: "#9b2c27" },
-  sepia: { negative: "#2168bb", mid: "#f0eeea", positive: "#9b2c27" },
-  dark: { negative: "#5391de", mid: "#31312d", positive: "#d97066" },
-  midnight: { negative: "#5391de", mid: "#2f3033", positive: "#d97066" },
-  graphite: { negative: "#5b96e0", mid: "#303033", positive: "#da7369" },
+  light: { negative: "#3379ce", mid: "#ebeff2", positive: "#cb584f" },
+  dark: { negative: "#5391de", mid: "#31312d", positive: "#cb685e" },
+  midnight: { negative: "#5391de", mid: "#2f3033", positive: "#cb685e" },
+  graphite: { negative: "#5b96e0", mid: "#303033", positive: "#d86b61" },
+  sepia: { negative: "#3379ce", mid: "#f0eeea", positive: "#cb584f" },
 } as const;
 // ─── end generated ────────────────────────────────────────────────────────────
 

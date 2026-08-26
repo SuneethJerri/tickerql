@@ -305,19 +305,39 @@ That rule shaped three of the four views.
 | **Ask** | Conversational transcript with live progress | Follow-ups refer back to earlier turns; every step is a real boundary in the agent loop, not a timer |
 
 Five themes (Light, Dark, Midnight, Graphite, Sepia) on one axis and four
-accents on another, so any pairing works. Each theme surface goes through the
-dataviz validator against the series palette before it ships. The validator is
-vendored at [`web/scripts/validate_palette.js`](web/scripts/validate_palette.js)
-rather than pulled in as a dependency, so the check is reproducible from a clone
-instead of being a claim about a script that lives somewhere else.
+accents on another, so any pairing works. **Each theme has its own chart
+palette, searched against its own surface** — not one light set and one dark
+set, which is what it was until the surfaces were measured: the shared sets
+took a sub-3:1 contrast relief on three of the five, worst `#eda100` at 2.01:1
+on Sepia. The five sets clear adjacent-CVD 11.6–13.7 against a target of 8.0,
+with no relief anywhere.
+
+They are generated rather than picked, by
+[`web/scripts/build_palettes.mjs`](web/scripts/build_palettes.mjs), which solves
+the slot ordering exactly — a bottleneck Hamiltonian path over the pairwise ΔE
+matrix — because the adjacent pairlist is what a line chart is measured on.
+Chroma is aimed at a target rather than maximised; the first working version
+maximised it and produced sets where every gate cleared and every line shouted.
+No series may sit within 16° of the surface's own hue cast, because a blue line
+on a blue ground reads as a tint of the ground and that is the one failure a
+contrast ratio cannot catch.
 
 Two rules hold the colour system together. **Data owns the hues** — the
 validated categorical set is the only saturated thing on a page that carries
-meaning. **Chrome wears ink**, so the four accents (Teal, Plum, Ochre, Oxblood)
-are each measured to be OKLab ΔE ≥ 15 from *every* series colour in their base,
-and a button can never be mistaken for a line. The set they replaced failed that
-test badly: its blue was `#2a78d6`, which is ΔE **0.0** from categorical slot
-one — the accent *was* the chart's blue.
+meaning. **Chrome wears ink**, so every series colour in every theme is OKLab
+ΔE ≥ 15 from all four accents (Teal, Plum, Ochre, Oxblood), and a button can
+never be mistaken for a line. This is a constraint on the palette search, not a
+check afterwards — the accent set that came before failed it at ΔE **0.0**,
+because its blue was `#2a78d6`, which *was* categorical slot one.
+
+The dataviz validator is vendored at
+[`web/scripts/validate_palette.js`](web/scripts/validate_palette.js) rather than
+pulled in as a dependency, so the check is reproducible from a clone.
+[`web/scripts/check_palettes.mjs`](web/scripts/check_palettes.mjs) then
+re-measures what actually shipped — it parses `palette.ts` and `styles.css`
+rather than trusting the generator's own output, because the gap between a green
+generator run and a correct app is the paste. It has a `--self-test` that
+mutates a hex and expects the failure.
 
 Three typefaces because the product has three registers: Martian Mono for the
 wordmark and every figure, Inter Tight for all prose, and IBM Plex Mono reserved
@@ -337,9 +357,13 @@ in the browser, because a progress display that invents phases on a timer lies
 exactly when the model is slow.
 
 The generated SQL is always visible rather than folded into a disclosure widget,
-and it is syntax-coloured from the *chart* palette — keywords in series blue,
-literals in series orange, identifiers in series green — so the app has one
-colour system and the query wears the same hues as the chart it justifies. A 3px
+and it is syntax-coloured from the *chart* palette — three of the theme's own
+series hues — so the app has one colour system and the query wears the same
+hues as the chart it justifies. They are the same hues at text contrast, not
+the same hexes: a mark needs 3:1 and text needs 4.5:1, and the values these
+replaced were literal copies of the series colours that came out at 2.20:1 on
+Light. The generator picks *which* three per theme, because some hues do not
+survive the move — an olive at text lightness is acid, whatever you do to it. A 3px
 gutter beside it carries the guard's verdict in `--good` or `--critical`, which
 makes the security boundary a permanent property of every answer instead of a
 notice that only appears when it fails. Answers arrive as markdown and render as

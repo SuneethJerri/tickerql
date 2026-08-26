@@ -34,7 +34,7 @@ import { validate, contrast } from "./validate_palette.js";
 // The surfaces and their validator bands come from the app's own theme table,
 // not from a second copy here. A second copy is exactly how the two `Mode`
 // unions this codebase used to carry drifted apart while still typechecking.
-import { THEMES as APP_THEMES } from "../src/theme.ts";
+import { THEMES as APP_THEMES, ACCENTS } from "../src/theme.ts";
 
 const BAND = { light: [0.43, 0.77], dark: [0.48, 0.67] };
 const CVD_MIN = 8.0;
@@ -87,13 +87,39 @@ const AVOID_LADDER = [16, 12, 8];
  */
 const LEAD_HUE = { light: 250, sepia: 250, dark: 250, midnight: 45, graphite: 250 };
 const DEFAULT_LEAD = 250;
-const THEMES = [
-  { name: "light",    mode: "light", surface: "#f7f9fb", avoid: null, objective: "chroma" },
-  { name: "sepia",    mode: "light", surface: "#fbf6e9", avoid: 92,   objective: "chroma" },
-  { name: "dark",     mode: "dark",  surface: "#1a1a19", avoid: null, objective: "chroma" },
-  { name: "midnight", mode: "dark",  surface: "#121826", avoid: 264,  objective: "chroma" },
-  { name: "graphite", mode: "dark",  surface: "#2c2c2e", avoid: null, objective: "contrast" },
-];
+/** Per-surface knowledge the app has no use for, keyed by theme name. Anything
+ *  the app already states - the surface hexes, the validator band, the accent
+ *  hexes - is read from src/theme.ts rather than restated. A theme added there
+ *  with no entry here gets the neutral defaults and still gets a set. */
+const TUNING = {
+  sepia:    { avoid: 92,   objective: "chroma" },
+  midnight: { avoid: 264,  objective: "chroma" },
+  graphite: { avoid: null, objective: "contrast" },
+};
+const THEMES = Object.entries(APP_THEMES).map(([name, t]) => ({
+  name,
+  mode: t.chartBase,
+  surface: t.surface,
+  panel: t.panel,
+  accents: Object.values(ACCENTS).map((a) => a.hex[t.chartBase]),
+  avoid: TUNING[name]?.avoid ?? null,
+  objective: TUNING[name]?.objective ?? "chroma",
+}));
+
+/**
+ * CHROME WEARS INK. The four accents are chrome; the categorical set is data.
+ * A button the same colour as a line destroys the only cue the page has for
+ * which saturated things carry meaning, and the accents were themselves chosen
+ * against this exact gate - the set before them had an accent at dE 0.0 from
+ * categorical slot one, because the accent WAS the chart's blue.
+ *
+ * The first version of this generator did not know about the accents, and the
+ * sets it produced walked straight into them: light/plum came out at dE 5.1
+ * from a series hue. So it is a constraint on the search now rather than
+ * something checked afterwards, and check_palettes.mjs re-checks it on the
+ * shipped file against the hexes parsed out of styles.css.
+ */
+const ACCENT_MIN_DE = 15;
 
 const MACHADO = {
   protan: [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]],
@@ -181,6 +207,7 @@ function candidatesForHue(h, theme, floor) {
       const hex = oklchToHex(L, C, h);
       const ratio = contrast(hex, theme.surface);
       if (ratio < floor) continue;
+      if (theme.accents.some((a) => deltaE(hex, a) < ACCENT_MIN_DE)) continue;
       // Contrast past floor + HEADROOM stops earning: without the cap the
       // contrast objective walks every slot to one end of the band, the set
       // converges on a single lightness, and the separation gates fail for want
@@ -362,6 +389,84 @@ function diverging(theme) {
   return { negative: pole(255), mid: oklchToHex(midL, 0.006, h), positive: pole(27) };
 }
 
+/**
+ * SQL syntax colours: the first three hues of the theme's own set, pushed to
+ * text contrast on the panel they sit on.
+ *
+ * The generated SQL is the artifact of the whole Ask page, and it is coloured
+ * from the chart palette on purpose - one colour system, and the query wears
+ * the same hues as the chart it justifies. But it is TEXT, and text wants
+ * 4.5:1, not the 3:1 a mark needs. The hardcoded values it replaces were copies
+ * of the old categorical slots and came out at 2.20:1 on Light, so the claim
+ * "coloured from the chart palette" was true and the result was unreadable.
+ *
+ * Hue is preserved exactly and lightness is moved until the ratio clears; some
+ * chroma goes with it, and the floor is 0.06 rather than the 0.10 a series
+ * needs, because at this size the token is identified by its shape as much as
+ * its colour and a grey-ish keyword is better than an illegible one.
+ */
+function sqlInk(theme, palette) {
+  // Every slot's best text-contrast variant: same hue exactly, lightness and
+  // chroma moved until the ratio clears. Both obvious objectives are wrong
+  // here. Minimising the move returns near-black on a light panel (#571804 for
+  // a keyword - legible, and reading as an absence of colour rather than a
+  // hue); maximising chroma returns the gamut edge (#0e59e8, #971de0 - legible
+  // and shouting). So this aims at the same chroma the series carry and at a
+  // ratio a little above the gate, which is what an ordinary syntax colour is.
+  const variants = palette.map((hex) => {
+    const h = hueOf(hex);
+    let best = null;
+    for (let L = 0.06; L <= 0.98; L += 0.005) {
+      const cMax = maxChroma(L, h);
+      for (const scale of [0.94, 0.8, 0.65, 0.5, 0.35]) {
+        const C = cMax * scale;
+        if (C < 0.06) continue;
+        const candidate = oklchToHex(L, C, h);
+        if (contrast(candidate, theme.panel) < 4.5) continue;
+        const ratio = contrast(candidate, theme.panel);
+        // Distance from the accents is a preference here, not a gate. The
+        // gate belongs on the SERIES, which is what an accent could be
+        // confused with; a keyword in a monospace block is not a mark on a
+        // chart. Making it a gate made Graphite infeasible outright - its
+        // panel is the lightest of the dark surfaces, so the only colours that
+        // clear 4.5:1 on it are light ones, which is exactly where the four
+        // dark-base accents live.
+        const nearestAccent = Math.min(...theme.accents.map((a) => deltaE(candidate, a)));
+        const score =
+          -Math.abs(C - TARGET_C[theme.mode]) * 20
+          - Math.abs(ratio - 5.5) * 0.3
+          + Math.min(nearestAccent, ACCENT_MIN_DE) * 0.15;
+        if (!best || score > best.score) best = { hex: candidate, score, drift: deltaE(candidate, hex) };
+      }
+    }
+    return best;
+  });
+
+  // Then pick WHICH three. Forcing slots 1-3 is what produced an acid
+  // yellow-green on Graphite: an olive series hue at text lightness IS acid,
+  // and no amount of tuning fixes a hue that does not survive the move. Some
+  // hues travel well and some do not, so the three that travel best are
+  // chosen, subject to still being tellable apart from each other - SQL tokens
+  // sit adjacent on one line, so this is an all-pairs set.
+  let choice = null;
+  for (let a = 0; a < variants.length; a++)
+    for (let b = a + 1; b < variants.length; b++)
+      for (let c = b + 1; c < variants.length; c++) {
+        const trio = [variants[a], variants[b], variants[c]];
+        if (trio.some((v) => !v)) continue;
+        const pairs = [[0, 1], [0, 2], [1, 2]];
+        if (pairs.some(([i, j]) => deltaE(trio[i].hex, trio[j].hex) < NORMAL_MIN)) continue;
+        const drift = trio.reduce((sum, v) => sum + v.drift, 0);
+        if (!choice || drift < choice.drift) choice = { drift, hexes: trio.map((v) => v.hex) };
+      }
+  // No silent fallback. Returning the series colours unchanged is what shipped
+  // three sub-3:1 values for Graphite while the generator reported success -
+  // the checker caught it, but only because the checker reads the stylesheet
+  // rather than trusting this function.
+  if (!choice) throw new Error(`no SQL ink for ${theme.name}: no three hues clear 4.5:1 on ${theme.panel}`);
+  return choice.hexes;
+}
+
 // ── run ───────────────────────────────────────────────────────────────────────
 const out = {};
 for (const theme of THEMES) {
@@ -374,7 +479,10 @@ for (const theme of THEMES) {
   const target = LEAD_HUE[theme.name] ?? DEFAULT_LEAD;
   const primary = found.palette.reduce((a, b) =>
     hueGap(hueOf(b), target) < hueGap(hueOf(a), target) ? b : a);
-  out[theme.name] = { ...found, primary, greys: greys(theme), diverging: diverging(theme) };
+  out[theme.name] = {
+    ...found, primary, greys: greys(theme), diverging: diverging(theme),
+    sql: sqlInk(theme, found.palette),
+  };
   console.error(
     `${theme.name.padEnd(9)} adjacent CVD ${found.m.cvd.toFixed(1)} / normal ${found.m.normal.toFixed(1)}   ` +
     `trio CVD ${found.t.cvd.toFixed(1)} / normal ${found.t.normal.toFixed(1)}   ` +
@@ -401,3 +509,14 @@ for (const t of present) {
   console.log(`  ${t.name}: { negative: "${d.negative}", mid: "${d.mid}", positive: "${d.positive}" },`);
 }
 console.log("} as const;");
+
+// The SQL colours are CSS custom properties rather than TS, because the SQL
+// block is styled by the stylesheet like everything else on the page. Paste
+// this into styles.css where the --sql-* declarations are; check_palettes.mjs
+// reads it back out of the stylesheet and re-measures it.
+console.log("\n/* ---- paste into src/styles.css ---- */");
+for (const t of present) {
+  const [kw, lit, id] = out[t.name].sql;
+  const selector = t.name === "light" ? ":root" : `:root[data-theme="${t.name}"]`;
+  console.log(`${selector} { --sql-kw: ${kw}; --sql-lit: ${lit}; --sql-id: ${id}; }`);
+}

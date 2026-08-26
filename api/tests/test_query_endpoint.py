@@ -136,3 +136,75 @@ def test_response_is_json_serialisable_with_dates_and_decimals(
     assert body["row_count"] == 3
     assert isinstance(body["rows"][0][0], str)
     assert isinstance(body["rows"][0][1], float)
+
+
+class _UpstreamError(Exception):
+    """Stands in for an SDK exception carrying an HTTP status.
+
+    Deliberately not an `anthropic` class: the agent duck-types `status_code`
+    precisely so the model client stays a narrow Protocol, and a test that
+    imported the real exception would stop proving that.
+    """
+
+    def __init__(self, status_code: int) -> None:
+        super().__init__(f"upstream said {status_code}")
+        self.status_code = status_code
+
+
+def _install_failing_client(monkeypatch, status: int) -> None:
+    from app.routers import query as query_router
+
+    class Rejecting:
+        def create(self, **kwargs):
+            raise _UpstreamError(status)
+
+    def factory():
+        raise AssertionError("the model call fails before any SQL runs")
+
+    agent = SqlAgent(Rejecting(), factory, model="claude-opus-5", max_rows=100)
+    monkeypatch.setattr(query_router, "_build_agent", lambda: agent)
+
+
+@pytest.mark.parametrize(
+    ("upstream", "expected", "must_say"),
+    [
+        # A rejected credential is a configuration problem, not a gateway
+        # hiccup: retrying cannot fix it, so it must not look retryable.
+        (401, 503, "credential"),
+        (403, 503, "credential"),
+        # The provider throttling us, not us throttling the caller. Same
+        # status; the detail is what tells the two apart.
+        (429, 429, "rate limiting"),
+        (500, 502, "HTTP 500"),
+        (529, 502, "HTTP 529"),
+    ],
+)
+def test_upstream_status_is_distinguishable(
+    client, monkeypatch, upstream, expected, must_say
+) -> None:
+    _install_failing_client(monkeypatch, upstream)
+    r = client.post("/api/query", json={"question": "how many assets are tracked?"})
+    assert r.status_code == expected
+    assert must_say in r.json()["detail"]
+
+
+def test_upstream_failure_does_not_echo_the_provider_body(client, monkeypatch) -> None:
+    """The provider's own message never reaches the caller.
+
+    Some gateways repeat the request in the error body, and at least one
+    repeats the key that was rejected. Only the status crosses the boundary.
+    """
+    from app.routers import query as query_router
+
+    class Leaky:
+        def create(self, **kwargs):
+            exc = _UpstreamError(401)
+            exc.args = ("invalid api key: sk-or-v1-secret-value",)
+            raise exc
+
+    agent = SqlAgent(Leaky(), lambda: None, model="claude-opus-5", max_rows=100)
+    monkeypatch.setattr(query_router, "_build_agent", lambda: agent)
+    r = client.post("/api/query", json={"question": "how many assets are tracked?"})
+    assert r.status_code == 503
+    assert "sk-or-v1" not in r.text
+    assert "secret-value" not in r.text

@@ -19,7 +19,7 @@ import secrets
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from app.agent.runner import AgentRefused, AgentUnavailable, AgentResult, SqlAgent
+from app.agent.runner import AgentRefused, AgentResult, AgentUnavailable, ModelCallFailed, SqlAgent
 from app.config import get_settings
 from app.db import agent_connection
 from app.models import QueryAttempt, QueryRequest, QueryResponse
@@ -118,6 +118,34 @@ def _to_response(result: AgentResult) -> QueryResponse:
     )
 
 
+
+def _model_failure(exc: ModelCallFailed) -> tuple[int, str]:
+    """Map an upstream model status onto one of ours.
+
+    Only the status is used. The upstream body is never echoed, because on some
+    gateways it repeats the request - and on at least one, the credential that
+    was rejected.
+    """
+    if exc.status in (401, 403):
+        # 503 for the same reason a missing key is 503 (D-58): the service is
+        # fine, this one capability is unusable until an operator re-sets the
+        # credential, and no amount of retrying will change that. A 502 here
+        # says "try again", which is wrong and wastes the caller's time.
+        return 503, (
+            f"The model provider rejected this deployment's credential "
+            f"(HTTP {exc.status}). It has to be re-set on the server."
+        )
+    if exc.status == 429:
+        # Distinct from the 429 _enforce_limits raises: that one is this
+        # service throttling the caller, this one is the provider throttling
+        # the service. Same status, and the detail is what tells them apart.
+        return 429, (
+            "The model provider is rate limiting this deployment. "
+            "Try again shortly."
+        )
+    return 502, f"The language model call failed upstream (HTTP {exc.status})."
+
+
 @router.post("/query", response_model=QueryResponse)
 def natural_language_query(
     payload: QueryRequest,
@@ -145,6 +173,10 @@ def natural_language_query(
         )
     except AgentRefused as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ModelCallFailed as exc:
+        status, detail = _model_failure(exc)
+        log.warning("model call failed upstream: HTTP %s", exc.status)
+        raise HTTPException(status_code=status, detail=detail) from exc
     except Exception as exc:  # noqa: BLE001
         log.exception("agent failed")
         raise HTTPException(
@@ -199,6 +231,10 @@ def natural_language_query_stream(
                 })
             except AgentRefused as exc:
                 events.put({"phase": "error", "status": 422, "detail": str(exc)})
+            except ModelCallFailed as exc:
+                status, detail = _model_failure(exc)
+                log.warning("model call failed upstream (stream): HTTP %s", exc.status)
+                events.put({"phase": "error", "status": status, "detail": detail})
             except Exception:  # noqa: BLE001
                 log.exception("agent failed (stream)")
                 events.put({
