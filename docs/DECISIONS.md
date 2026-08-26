@@ -1676,3 +1676,174 @@ defaults to `meta-llama/llama-3.3-70b-instruct`. Following the runbook and
 applying the blueprint gave two different models with nothing flagging the
 disagreement. The table now names the committed default and mentions the
 Anthropic model as the better-answering alternative.
+
+---
+
+## Phase 7 — deep links, export, asset detail, sparklines
+
+### Decisions
+
+**D-125 · URL state reads the address bar through `useSyncExternalStore`
+instead of a context.** Tab, window, theme, accent and selected asset lived in
+`useState`, so no view was shareable and the back button did nothing. The
+obvious fix is a router, which is a dependency and a rewrite for five scalars.
+The address bar is already an external store, so `useSyncExternalStore` over it
+is the smaller change and cannot desynchronise from the URL by construction —
+there is no second copy of the state to drift. The one sharp edge is that
+`pushState` and `replaceState` deliberately do not fire `popstate`, so
+`web/src/urlState.ts` keeps its own listener set and notifies after every write.
+Without that, a click updates the URL and nothing re-renders.
+
+**D-126 · Push or replace is chosen per control, not globally.** Changing the
+tab or the selected asset pushes, because those are places a reader expects Back
+to return from. Changing the theme or the accent replaces, because a reader who
+tries four themes and then presses Back wants the previous *view*, not the
+previous *colour*, and a global push mode would bury the view four entries deep.
+`HistoryMode` is a parameter on every hook with `"push"` as the default, so the
+quiet choice is the common one.
+
+**D-127 · A value equal to the default is deleted from the URL rather than
+written to it.** Otherwise the first render of a fresh page stamps
+`?tab=dashboard&window=365&theme=light&accent=blue` into the address bar, and
+every shared link carries four parameters that mean "unchanged". Deleting them
+keeps a link short enough that the part that matters is visible.
+
+**D-128 · One CSV escaper, RFC 4180, with a conditional formula-injection
+guard.** `escapeCell` quotes only when the cell contains a comma, quote,
+newline or leading whitespace, and doubles inner quotes. The formula guard
+prefixes a cell starting with `=`, `+`, `@` or a tab — but *not* one starting
+with `-`, because a legitimate negative number also starts with `-` and
+prefixing those turns every drawdown in the file into text. A file that is safe
+and unreadable is not safe, it is just unused.
+
+**D-129 · The download carries a UTF-8 BOM.** Excel reads a BOM-less UTF-8 CSV
+in the local codepage, which mangles the em dashes in sector names and the `₹`
+in the Indian rows. The BOM is three bytes and it is what makes the file open
+correctly for the people most likely to open it in a spreadsheet.
+
+**D-130 · Ask exports every row the query returned, not the 50 the page
+shows.** The 50-row display cap is a rendering decision; silently applying it
+to the export means a reader who asks for 200 rows, sees "showing 50", and hits
+Download gets 50 with nothing saying so. The response already carries the full
+result set and its `truncated` flag, so the export uses that and the header row
+count matches what the API actually returned.
+
+**D-131 · The sparkline is hand-rolled SVG, not a Recharts chart.** A sparkline
+is one path, no axes, no tooltip, no legend, and 135 of them mount at once in
+the risk table. A Recharts `<LineChart>` per row brings a `ResponsiveContainer`
+resize observer per row with it. `web/src/charts/Sparkline.tsx` builds a `d`
+string and colours it from `emphasisColors(mode).primary`, which keeps it inside
+the theme system without consuming a categorical hue — the palette caps at eight
+adjacent hues and this is a 135-series problem.
+
+**D-132 · One request for all sparklines, weekly last closes, no per-point
+dates.** 135 assets × ~250 daily bars is ~34,000 points on the wire to draw
+paths about 90 px wide, where fewer than 90 points can occupy a distinct pixel.
+`db/queries/sparklines.sql` takes the **last** bar of each ISO week, not the
+average: a mean smooths away exactly the drawdowns a sparkline exists to show,
+and a last close is a number that actually traded. Dates are dropped from the
+payload because the points are evenly spaced by construction and the x-axis is
+never read.
+
+**D-133 · The asset page reports a rank within its sector, not a percentile.**
+Sectors here run from 3 to 12 assets. "78th percentile" computed over 5 assets
+is a number with more precision than the sample supports; "2nd of 5 in Energy by
+return per unit of risk" says the same thing without implying a distribution
+that was never estimated.
+
+**D-134 · The screenshot pass derives its hold from a measured warm pass instead
+of a constant.** `web/scripts/screenshot.py` now fetches the six slowest
+endpoints through the proxy before shooting anything, times them, and sets the
+per-shot hold to `max(6, slowest × 1.6 + 3)`. Warming alone was not enough:
+warming touches Postgres and there is no cache in front of the API, so the
+browser still pays a large part of the cold cost, and a fixed hold that is right
+for a warm database photographs a skeleton against a cold one. `--hold` still
+overrides for a deliberate run; the default is now a measurement.
+
+**D-135 · `.claude/` and `CLAUDE.md` are untracked and gitignored.** They are
+assistant configuration, not project source, and they sat at the repo root for
+59 commits where they were the most visible files in the GitHub listing. The
+files stay on disk — nothing about how the project is worked on changes — they
+are simply not part of what the repository publishes. Checked at the same time
+and worth recording because it was *not* what it looked like: every one of the
+59 commits has `Suneeth Jerri` as both author and committer, there is not a
+single `Co-Authored-By` trailer anywhere in the history, and GitHub's
+contributors API returns exactly one contributor. The repo read as an assistant
+project because of two filenames, not because of its authorship.
+
+**D-136 · The README's generated section was shortened at the generator, not in
+the README.** Three of the four insights inlined a full 19-sector or 135-asset
+list as comma-separated prose — one of them named 54 tickers in a single
+sentence. Hand-trimming the README would have been undone by the next
+`insights.py --inject`. `render_markdown` now emits the best and worst three as
+a table and states the counts, so the claim keeps its evidence and loses the
+dump. The hand-written prose around it was rewritten in the same pass and the
+file went from 442 lines to 401 with two sections folded in and one dropped.
+
+### Mistakes
+
+**M-61 · The risk/return scatter drew an axis with uneven gaps and I did not
+catch it until I looked at the picture.** Handed an explicit domain, Recharts
+pins both endpoints exactly and rounds only the interior. On a `[-120, 230]`
+return domain that produced ticks at 230 / 60 / -30 / -120 — three gaps of 90
+and one of 170, which reads as an axis with a mistake in it rather than as a
+scale. `DrawdownChart` had already worked around this with explicit ticks; the
+scatter had not, and because its domain moves with the selected window the
+defect appears and disappears with the data, so a single screenshot could have
+passed. Fixed with an `evenTicks()` helper that picks a 1/2/2.5/5 × 10ⁿ step and
+deliberately leaves the endpoints unlabelled — they are padding, not readings,
+and labelling them is what forced the uneven gap.
+
+**M-62 · The drawdown chart never labelled 0%, the one value the whole chart is
+measured from.** The domain ended exactly at 0, so the series sat flush against
+the plot's top edge, and Recharts silently culls a tick whose label box would
+overhang the edge. The axis read -5% / -10% / -15% and simply omitted zero. The
+same flush edge made the peak line and the panel border the same pixel, so "at
+its high-water mark" looked like "no data here". Both are one cause and one fix:
+5% of the depth as headroom above zero. Recharts drops ticks without warning,
+which is the general lesson — an axis that looks sparse is worth counting.
+
+**M-63 · The agent answered a sector question with the same sector three
+times.** Asked for the three most volatile sectors it emitted
+`GROUP BY a.sector, m.annualized_volatility … LIMIT 3` and answered "the three
+sectors … are all 'Crypto'". The SQL is valid, the guard passed it, and three
+rows came back — grouping by a metric column groups by a value that is distinct
+for every asset, so each row is one asset wearing its sector's name and the
+ranking silently becomes a ranking of assets. Nothing in the stack can catch
+this: it is not a syntax error, not a privilege violation, and not an empty
+result. Found by reading an answer in the screenshot pass. Fixed with rule 8 in
+`prompt.py`, which shows the wrong form as well as the right one, and pinned by
+a test that asserts both phrases survive. This is the strongest argument yet for
+the screenshot pass being an acceptance gate rather than a formality: it is the
+only step that reads output.
+
+**M-64 · Phase 7 was committed with no `DECISIONS.md` entry, and the draft was
+lost with the scratchpad.** This is the second time — M-48 was the same failure
+— and the standing instruction is explicit that the log is written as the work
+happens. The entries above were reconstructed from the committed diff and the
+code comments, which is recoverable only because the reasoning was written into
+the source at the time. Reconstruction is not a substitute: the entries that
+survive are the ones with a comment behind them, and anything decided and not
+commented is simply gone. The fix is ordering, not effort — the log entry goes
+in the same commit as the change, and a scratchpad is never the only copy of
+anything.
+
+**M-65 · Three of twenty-four screenshots were loading skeletons and the pass
+reported success.** At `--hold 9` the correlation view had not finished
+fetching, so the shot captured an empty grey block. Nothing failed: the page
+returned 200, the screenshot was written, the run exited 0, and the only visible
+signal was that the file was 129 KB instead of 237 KB. Cold timings measured
+afterwards explain it — correlation is 23 s cold and 5.8 s warm, sector-index
+8.9 s cold, sparklines 5.0 s cold — and one request that collided with a
+concurrent correlation query under connection-pool contention took 897 s and
+returned 61 bytes. A gate that can pass by photographing nothing is worse than
+no gate, because it is trusted. Fixed by D-134.
+
+**M-66 · The rewritten insights generator printed "an equity that lost only
+-0.0%".** The sentence picks the shallowest loser to show that the split runs by
+outcome rather than by asset class, and after the refresh the shallowest loser
+had finished the window at roughly flat, which makes the sentence say nothing
+while sounding like it says something. The generated prose is only as true as
+its worst input, so the selector now requires the loss to exceed 1% before the
+clause is emitted at all, and the surrounding claim is conditional on whether
+the two ranges actually separate in the current window.
