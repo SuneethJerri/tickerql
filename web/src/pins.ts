@@ -27,7 +27,9 @@ export const MAX_PINS = 8;
  *  would otherwise sit in the strip forever showing em dashes. */
 const TICKER = /^[A-Z0-9.]{1,12}$/;
 
-function parse(raw: string | null): string[] {
+/** Exported for the tests: this is the half of pinning that has rules -
+ *  everything a hand-edited or shared URL can put in front of it. */
+export function parsePins(raw: string | null): string[] {
   if (!raw) return [];
   const seen = new Set<string>();
   for (const part of raw.split(",")) {
@@ -40,7 +42,7 @@ function parse(raw: string | null): string[] {
 
 function read(): string[] {
   try {
-    return parse(window.localStorage.getItem(STORE));
+    return parsePins(window.localStorage.getItem(STORE));
   } catch {
     // Private windows and "block site data" both throw on access rather than
     // returning null, so this has to be a try/catch and not a null check.
@@ -71,7 +73,7 @@ export function usePins(): Pins {
   // from `?pins=` meaning "explicitly none" - the first restores the remembered
   // set, the second must stay empty or clearing pins would undo itself on the
   // next render.
-  const pins = raw === null ? read() : parse(raw);
+  const pins = raw === null ? read() : parsePins(raw);
 
   const write = useCallback((next: string[]) => {
     persist(next);

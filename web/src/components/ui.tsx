@@ -45,11 +45,24 @@ export function ErrorNotice({ error }: { error: unknown }) {
     <div className="notice error">
       <strong>Could not load this view.</strong>
       <div>{message}</div>
-      {offline && (
-        <div className="hint muted">
-          Is the API running? <code>uvicorn app.main:app --reload</code>
-        </div>
-      )}
+      {/* The hint has to differ by build. This said "Is the API running?
+          uvicorn app.main:app --reload" everywhere, including production,
+          where it is advice about a machine the reader does not have - and it
+          misdirected the one real outage we have had for about forty minutes,
+          because it names a cause that is impossible on a deployed page. In
+          production the same symptom has a different likely cause and a
+          different useful action. */}
+      {offline &&
+        (import.meta.env.DEV ? (
+          <div className="hint muted">
+            Is the API running? <code>uvicorn app.main:app --reload</code>
+          </div>
+        ) : (
+          <div className="hint muted">
+            The API sleeps after a spell with no traffic and takes about a
+            minute to wake. Reloading shortly usually works.
+          </div>
+        ))}
     </div>
   );
 }
