@@ -2,6 +2,7 @@ import { Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, YAxis } f
 import type { SectorIndexPoint } from "../api";
 import { MARK, emphasisColors, type ChartBase } from "./palette";
 import { TooltipCard } from "./ChartTooltip";
+import { baselineScale } from "./scale";
 
 /** Sector comparison as small multiples, one panel per sector.
  *
@@ -50,16 +51,12 @@ export function SectorIndexChart({
 
   // One y-domain across every panel. Per-panel autoscaling would draw a 2%
   // sector and a 60% sector with the same amplitude, which is the standard way
-  // small multiples mislead.
-  let low = Number.POSITIVE_INFINITY;
-  let high = Number.NEGATIVE_INFINITY;
-  for (const panel of panels) {
-    for (const point of panel.series) {
-      if (point.value < low) low = point.value;
-      if (point.value > high) high = point.value;
-    }
-  }
-  const domain: [number, number] = Number.isFinite(low) ? [low, high] : [0, 200];
+  // small multiples mislead. Snapping it outward to a round step also keeps the
+  // extremes off the frame - at 84px tall an exact [min, max] clips half the
+  // stroke on whichever sector owns the high or the low.
+  const { domain } = baselineScale(
+    panels.flatMap((panel) => panel.series.map((point) => point.value)),
+  );
 
   if (!panels.length) return null;
 

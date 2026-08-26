@@ -5,6 +5,7 @@ import {
 import { api, fmtPct, type RiskMetric } from "../api";
 import { TooltipCard } from "../charts/ChartTooltip";
 import { emphasisColors, type ChartBase } from "../charts/palette";
+import { baselineScale } from "../charts/scale";
 import { Sparkline } from "../charts/Sparkline";
 import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
 import { PinButton } from "../components/PinButton";
@@ -80,6 +81,10 @@ export function SectorPage({ mode }: { mode: ChartBase }) {
     .filter((p) => p.sector === sector && Number.isFinite(p.indexed_value))
     .map((p) => ({ date: p.date, value: p.indexed_value }));
 
+  // Anchored on 100 and snapped to round ticks. Left to Recharts the axis
+  // starts at zero, and an index that runs 96-152 is drawn in the top third.
+  const scale = baselineScale(series.map((p) => p.value));
+
   const spark = new Map((sparks.data ?? []).map((s) => [s.ticker, s.closes]));
   const change = series.length ? series[series.length - 1]!.value - 100 : null;
   // INR sectors are a local-currency series. Saying so once, here, is better
@@ -132,6 +137,7 @@ export function SectorPage({ mode }: { mode: ChartBase }) {
                 <YAxis
                   tick={{ fontSize: 11, fill: "var(--text-muted)" }}
                   tickLine={false} axisLine={false} width={46}
+                  domain={scale.domain} ticks={scale.ticks}
                 />
                 <ReferenceLine y={100} stroke="var(--border-strong)" strokeWidth={1} />
                 <Tooltip

@@ -5,6 +5,7 @@ import {
 import { api, fmtPct, type RiskMetric } from "../api";
 import { TooltipCard } from "../charts/ChartTooltip";
 import { sectorColor, type ChartBase } from "../charts/palette";
+import { baselineScale } from "../charts/scale";
 import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
 import { PinButton } from "../components/PinButton";
 import { AskAbout } from "../components/AskAbout";
@@ -64,6 +65,14 @@ export function ComparePage({ mode }: { mode: ChartBase }) {
     }
     return row;
   });
+
+  // Only the rebased values - `row.i` is the x index and feeding it to the
+  // scale would drag the low end down to zero, which is the defect this fixes.
+  const scale = baselineScale(
+    rows.flatMap((row) =>
+      series.map((s) => row[s.ticker]).filter((v): v is number => v != null),
+    ),
+  );
 
   if (!chosen.length) {
     return (
@@ -125,6 +134,7 @@ export function ComparePage({ mode }: { mode: ChartBase }) {
                 <YAxis
                   tick={{ fontSize: 11, fill: "var(--text-muted)" }}
                   tickLine={false} axisLine={false} width={46}
+                  domain={scale.domain} ticks={scale.ticks}
                 />
                 {/* The start of the window. Without it "up 3%" and "down 3%"
                     are the same picture at this size. */}
