@@ -184,7 +184,8 @@ export function SectorPage({ theme }: { theme: ThemeName }) {
             Download CSV ({members.length} rows)
           </button>
         </div>
-        <table className="data">
+        <div className="table-scroll">
+          <table className="data">
           <thead>
             <tr>
               <th className="align-left">Ticker</th>
@@ -222,7 +223,8 @@ export function SectorPage({ theme }: { theme: ThemeName }) {
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        </div>
       </Card>
     </>
   );

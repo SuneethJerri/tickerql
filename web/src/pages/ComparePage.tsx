@@ -194,7 +194,8 @@ export function ComparePage({ theme }: { theme: ThemeName }) {
             Download CSV
           </button>
         </div>
-        <table className="data">
+        <div className="table-scroll">
+          <table className="data">
           <thead>
             <tr>
               <th className="align-left">Ticker</th>
@@ -222,7 +223,8 @@ export function ComparePage({ theme }: { theme: ThemeName }) {
               );
             })}
           </tbody>
-        </table>
+          </table>
+        </div>
       </Card>
     </>
   );

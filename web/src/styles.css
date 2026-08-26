@@ -621,7 +621,9 @@ table.data .swatch {
 }
 
 /* ---------- heatmap ---------- */
-.heatmap { display: grid; gap: 2px; overflow-x: auto; }
+.heatmap { display: grid; gap: 2px; overflow-x: auto; --heat-label: 48px; }
+/* Sector names need room; ticker symbols do not. */
+.heatmap.wide { --heat-label: 150px; }
 .heat-cell {
   aspect-ratio: 1; display: grid; place-items: center;
   font-size: var(--text-xs); font-variant-numeric: tabular-nums;
@@ -845,6 +847,90 @@ pre.sql-text[data-guard="blocked"] { border-left-color: var(--critical); }
   transition: background var(--dur-fast) var(--ease),
               color var(--dur-fast) var(--ease),
               border-color var(--dur-fast) var(--ease);
+}
+
+/* ---------- horizontal scroll for anything wider than the page ---------- */
+/* A table with eight columns does not fit a phone and must not stretch the
+   page to fit it either - a body that scrolls sideways drags every other
+   section out of alignment with it. */
+.table-scroll { overflow-x: auto; }
+
+/* The heatmap's row labels stay put while the columns scroll under them. Left
+   to scroll away, a cell reached by scrolling is a number with nothing naming
+   its row, which is the same as no data at all. */
+.heat-axis.row {
+  position: sticky; left: 0; z-index: 1;
+  background: var(--surface-0);
+}
+
+/* ---------- narrow viewports ---------- */
+/* Every screenshot this app had was taken at 1440px, so none of this was
+   exercised until the phone pass. Two things were broken rather than merely
+   cramped: the topbar ran off the right edge, taking the last two tabs and the
+   theme picker with it and offering no way to reach them; and the heatmap put
+   twelve of its nineteen columns past the edge. */
+
+@media (max-width: 860px) {
+  .content { padding: var(--space-4); }
+  .masthead h1 { font-size: var(--text-3xl); }
+  .grid.cols-2 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+  /* The nav takes a full-width row of its own and scrolls sideways in it.
+     Letting it wrap instead gives a bar whose height depends on the tab
+     labels - and this bar is sticky, so its height is the content's top
+     offset and must not move when the labels do. */
+  .nav {
+    order: 5; flex-basis: 100%;
+    overflow-x: auto; scrollbar-width: none;
+    margin: 0 calc(var(--space-4) * -1);
+    padding: 0 var(--space-4);
+  }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav button { white-space: nowrap; }
+
+  /* Stacked into one column, the rules between the readout's figures read as a
+     single stray vertical line down the left of a list. A separator has to run
+     across the axis it separates on. */
+  .readout .stat {
+    border-left: none; padding-left: 0; padding-right: 0;
+    border-top: 1px solid var(--border);
+  }
+  .readout .stat:first-child { border-top: none; }
+
+  /* A table inside a scroll container still honours width: 100%, so it
+     squeezes to the viewport instead of scrolling - "Marathon Petroleum
+     Corporation" over three lines in a 70px column. max-content is the width
+     at which nothing wraps, so the container does the job it was added for
+     and no fixed pixel floor has to guess at the widest asset name. */
+  .table-scroll table.data,
+  .md-table-wrap table.data { min-width: max-content; }
+
+  /* Nineteen sector names do not get 150px on a phone. */
+  .heatmap.wide { --heat-label: 96px; }
+  /* Right-aligned, a name too long for the column loses its FIRST characters -
+     the browser clips the overflow and puts the ellipsis at the end, where
+     there is nothing to elide. "Communication Services" arrives as
+     "unication Services". Left-aligned, the truncation lands where a reader
+     expects it and the distinguishing part of the name survives. */
+  .heat-axis.row {
+    justify-content: start; text-align: left;
+    padding-left: 2px; padding-right: var(--space-1);
+  }
+  .masthead h1 { font-size: var(--text-2xl); }
+  .card .subtitle { max-width: none; }
+}
+
+@media (max-width: 520px) {
+  /* The bar count and last-bar date are context, not navigation, and the row
+     they share is the one that has to keep the theme picker reachable. */
+  .topbar .health { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

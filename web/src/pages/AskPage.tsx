@@ -330,7 +330,8 @@ function Answer({ result, events }: { result: QueryResponse; events: StreamEvent
           >
             Download CSV ({result.row_count} row{result.row_count === 1 ? "" : "s"})
           </button>
-          <table className="data">
+          <div className="table-scroll">
+            <table className="data">
             <thead>
               <tr>{result.columns.map((c) => <th key={c} scope="col">{c}</th>)}</tr>
             </thead>
@@ -349,7 +350,8 @@ function Answer({ result, events }: { result: QueryResponse; events: StreamEvent
                 </tr>
               ))}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       )}
 

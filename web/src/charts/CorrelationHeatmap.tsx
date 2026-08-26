@@ -44,9 +44,16 @@ export function CorrelationHeatmap({
   return (
     <div>
       <div
-        className="heatmap"
+        // The label column's width is a class, not an inline value. It was
+        // briefly an inline custom property, on the theory that a stylesheet
+        // cannot override an inline property but can redefine a variable -
+        // which is wrong: an inline custom property declaration beats a
+        // stylesheet rule on the same element just as any other does, so the
+        // narrow-viewport override silently did nothing. A class leaves both
+        // widths in CSS where the breakpoint can reach them.
+        className={`heatmap${wide ? " wide" : ""}`}
         style={{
-          gridTemplateColumns: `${wide ? 150 : 48}px repeat(${labels.length}, minmax(26px, 1fr))`,
+          gridTemplateColumns: `var(--heat-label) repeat(${labels.length}, minmax(26px, 1fr))`,
         }}
       >
         <div />
