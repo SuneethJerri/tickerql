@@ -7,6 +7,9 @@ import type { ChartBase } from "../charts/palette";
 import { StatTile } from "../components/StatTile";
 import { TableView, type Column } from "../components/TableView";
 import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { PinButton } from "../components/PinButton";
+import { AskAbout } from "../components/AskAbout";
+import { usePins } from "../pins";
 import { useUrlNumber, useUrlString } from "../urlState";
 
 /** One asset on its own.
@@ -20,6 +23,7 @@ export function AssetPage({ mode }: { mode: ChartBase }) {
   // "push" here, unlike on the dashboard: on this page the ticker IS the view,
   // so `back` should return to the asset you were looking at before.
   const [ticker, setTicker] = useUrlString("ticker", "AAPL", "push");
+  const pins = usePins();
   const [windowDays, setWindow] = useUrlNumber("window", METRIC_WINDOWS, 365, "replace");
 
   const assets = useQuery({ queryKey: ["assets"], queryFn: api.assets });
@@ -74,6 +78,8 @@ export function AssetPage({ mode }: { mode: ChartBase }) {
           </select>
         </span>
         <WindowPicker value={windowDays} onChange={setWindow} />
+        <PinButton ticker={ticker} pins={pins} />
+        <AskAbout question={`How did ${ticker} perform over the last ${windowDays} days, and how does it compare with its sector?`} />
         {asset && (
           <span className="control muted">
             {asset.sector} · {asset.currency} · {asset.bar_count.toLocaleString("en")} bars

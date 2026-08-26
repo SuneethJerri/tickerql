@@ -5,10 +5,13 @@ import { Sparkline } from "../charts/Sparkline";
 import { assetTypeColor, type ChartBase } from "../charts/palette";
 import { TableView, type Column } from "../components/TableView";
 import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { PinButton } from "../components/PinButton";
+import { usePins } from "../pins";
 import { setUrlParams, useUrlNumber } from "../urlState";
 
 export function RiskPage({ mode }: { mode: ChartBase }) {
   const [windowDays, setWindow] = useUrlNumber("window", METRIC_WINDOWS, 365, "replace");
+  const pins = usePins();
   const risk = useQuery({
     queryKey: ["risk-return", windowDays],
     queryFn: () => api.riskReturn(windowDays),
@@ -22,6 +25,13 @@ export function RiskPage({ mode }: { mode: ChartBase }) {
   const closesFor = new Map((shapes.data ?? []).map((s) => [s.ticker, s.closes]));
 
   const columns: Column<RiskMetric>[] = [
+    {
+      // No header: a column of controls is not a measurement, and "Pin" above
+      // 135 buttons labels the button, not the column.
+      header: "",
+      value: () => "",
+      cell: (r) => <PinButton ticker={r.ticker} pins={pins} compact />,
+    },
     {
       header: "Asset",
       value: (r) => r.ticker,

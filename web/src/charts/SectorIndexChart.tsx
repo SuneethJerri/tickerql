@@ -19,9 +19,14 @@ import { TooltipCard } from "./ChartTooltip";
 export function SectorIndexChart({
   data,
   mode,
+  onSelect,
 }: {
   data: SectorIndexPoint[];
   mode: ChartBase;
+  /** Given, each panel becomes a button that drills into that sector. The
+   *  chart stays usable without it - the correlation page renders the same
+   *  panels with nothing to drill into. */
+  onSelect?: (sector: string) => void;
 }) {
   const { primary } = emphasisColors(mode);
 
@@ -63,11 +68,34 @@ export function SectorIndexChart({
       {panels.map((panel) => {
         const change = panel.final - 100;
         return (
-          <figure className="sm-panel" key={panel.sector}>
+          <figure
+            className={`sm-panel${onSelect ? " selectable" : ""}`}
+            key={panel.sector}
+            // A figure rather than a button wrapping everything: the tooltip
+            // inside needs pointer events, and nesting interactive content in a
+            // button is invalid. The caption carries the control instead, so
+            // keyboard users get one tab stop per sector rather than one per
+            // chart element.
+            onClick={onSelect ? () => onSelect(panel.sector) : undefined}
+          >
             <figcaption>
-              <span className="sm-name" title={panel.sector}>
-                {panel.sector}
-              </span>
+              {onSelect ? (
+                <button
+                  type="button"
+                  className="sm-name link-quiet"
+                  title={`${panel.sector} — see the assets behind it`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelect(panel.sector);
+                  }}
+                >
+                  {panel.sector}
+                </button>
+              ) : (
+                <span className="sm-name" title={panel.sector}>
+                  {panel.sector}
+                </span>
+              )}
               <span className={`delta sm-delta ${change >= 0 ? "up" : "down"}`}>
                 {change >= 0 ? "+" : ""}
                 {change.toFixed(1)}%

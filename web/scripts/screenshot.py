@@ -51,7 +51,7 @@ import urllib.request
 from pathlib import Path
 
 THEMES = ["system", "light", "dark", "midnight", "graphite", "sepia"]
-TABS = ["dashboard", "risk", "correlation", "asset", "ask"]
+TABS = ["dashboard", "sector", "risk", "correlation", "asset", "compare", "ask"]
 
 # Fetched once before the first shot, through the same proxy the browser uses.
 #
@@ -75,9 +75,11 @@ WARM = [
 # The display labels the old --tabs took, so existing invocations keep working.
 TAB_ALIASES = {
     "dashboard": "dashboard",
+    "sectors": "sector",
     "risk vs return": "risk",
     "correlation": "correlation",
     "asset": "asset",
+    "compare": "compare",
     "ask": "ask",
 }
 
@@ -285,6 +287,15 @@ def main() -> int:
         help="CSS selector to click once it appears (e.g. '.table-toggle').",
     )
     parser.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Extra query parameter for every shot, repeatable. Views whose "
+             "state lives in the URL cannot be reached otherwise: the sector "
+             "drill-down needs ?sector=Energy and compare needs ?pins=A,B.",
+    )
+    parser.add_argument(
         "--ask",
         help="Type this question into the Ask form and submit it before shooting.",
     )
@@ -362,6 +373,10 @@ def main() -> int:
                 params = {"__theme": theme, "__accent": args.accent, "tab": tab}
                 if args.click:
                     params["__click"] = args.click
+                for pair in args.param:
+                    key, _, value = pair.partition("=")
+                    if key:
+                        params[key] = value
                 if args.ask and tab == "ask":
                     params["__ask"] = args.ask
                 query = urllib.parse.urlencode(params)

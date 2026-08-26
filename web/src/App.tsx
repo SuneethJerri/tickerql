@@ -8,12 +8,16 @@ import { RiskPage } from "./pages/RiskPage";
 import { CorrelationPage } from "./pages/CorrelationPage";
 import { AssetPage } from "./pages/AssetPage";
 import { AskPage } from "./pages/AskPage";
+import { SectorPage } from "./pages/SectorPage";
+import { ComparePage } from "./pages/ComparePage";
 
 const TABS = [
   { id: "dashboard", label: "Dashboard" },
+  { id: "sector", label: "Sectors" },
   { id: "risk", label: "Risk vs return" },
   { id: "correlation", label: "Correlation" },
   { id: "asset", label: "Asset" },
+  { id: "compare", label: "Compare" },
   { id: "ask", label: "Ask" },
 ] as const;
 
@@ -84,9 +88,11 @@ export default function App() {
 
       <main className="content">
         {tab === "dashboard" && <Dashboard mode={chartBase} />}
+        {tab === "sector" && <SectorPage mode={chartBase} />}
         {tab === "risk" && <RiskPage mode={chartBase} />}
         {tab === "correlation" && <CorrelationPage mode={chartBase} />}
         {tab === "asset" && <AssetPage mode={chartBase} />}
+        {tab === "compare" && <ComparePage mode={chartBase} />}
         {tab === "ask" && <AskPage />}
       </main>
     </div>

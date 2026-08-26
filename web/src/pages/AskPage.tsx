@@ -3,6 +3,7 @@ import { ApiError, api, type QueryResponse, type StreamEvent, type Turn } from "
 import { downloadCsv, type CsvCell } from "../csv";
 import { Markdown } from "../components/Markdown";
 import { tokenizeSql } from "../sqlHighlight";
+import { setUrlParams, useUrlOptional } from "../urlState";
 import { Card } from "../components/ui";
 
 const SUGGESTIONS = [
@@ -29,6 +30,15 @@ interface Exchange {
 
 export function AskPage() {
   const [draft, setDraft] = useState("");
+  // A question handed over from another view by "Ask about this". Consumed
+  // once: it is copied into the draft and dropped from the URL, so a reload or
+  // a Back does not silently re-fill a box the reader has since cleared.
+  const handoff = useUrlOptional("q", 400);
+  useEffect(() => {
+    if (!handoff) return;
+    setDraft(handoff);
+    setUrlParams({ q: null }, "replace");
+  }, [handoff]);
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [pending, setPending] = useState(false);
   const abort = useRef<AbortController | null>(null);

@@ -6,13 +6,17 @@ import type { ChartBase } from "../charts/palette";
 import { StatTile } from "../components/StatTile";
 import { TableView, type Column } from "../components/TableView";
 import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
-import { useUrlNumber, useUrlString } from "../urlState";
+import { setUrlParams, useUrlNumber, useUrlString } from "../urlState";
+import { usePins } from "../pins";
+import { PinnedStrip } from "../components/PinnedStrip";
+import { AskAbout } from "../components/AskAbout";
 
 export function Dashboard({ mode }: { mode: ChartBase }) {
   // "replace", not "push": these refine the current view, and flicking through
   // 30d/90d/365d should not bury the previous tab under three history entries.
   const [windowDays, setWindow] = useUrlNumber("window", METRIC_WINDOWS, 365, "replace");
   const [ticker, setTicker] = useUrlString("ticker", "AAPL", "replace");
+  const pins = usePins();
 
   const assets = useQuery({ queryKey: ["assets"], queryFn: api.assets });
   // Same query key the topbar uses, so react-query serves this from cache
@@ -58,6 +62,8 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
         </div>
       </header>
 
+      <PinnedStrip pins={pins} windowDays={windowDays} mode={mode} />
+
       <div className="controls">
         <WindowPicker value={windowDays} onChange={setWindow} />
         <span className="control">
@@ -99,11 +105,20 @@ export function Dashboard({ mode }: { mode: ChartBase }) {
       <div className="grid">
         <Card
           title="Sector performance"
-          subtitle="Equal-weighted and indexed to 100 at the start of the window, one panel per sector on a shared scale. Indian sectors are priced in INR, so their panels are local-currency returns and are not directly comparable with the USD ones."
+          subtitle="Equal-weighted and indexed to 100 at the start of the window, one panel per sector on a shared scale. Click a sector to see the assets behind it. Indian sectors are priced in INR, so their panels are local-currency returns and are not directly comparable with the USD ones."
+          action={
+            <AskAbout
+              question={`Which sector had the best return per unit of risk over the last ${windowDays} days, and which assets drove it?`}
+            />
+          }
         >
           {index.isPending ? <Loading /> : index.error ? <ErrorNotice error={index.error} /> : (
             <>
-              <SectorIndexChart data={index.data!} mode={mode} />
+              <SectorIndexChart
+                data={index.data!}
+                mode={mode}
+                onSelect={(s) => setUrlParams({ tab: "sector", sector: s }, "push")}
+              />
               <SectorTable rows={perf.data ?? []} windowDays={windowDays} />
             </>
           )}

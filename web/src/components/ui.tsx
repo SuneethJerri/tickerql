@@ -2,15 +2,21 @@ import type { ReactNode } from "react";
 import { ApiError } from "../api";
 
 export function Card({
-  title, subtitle, children,
+  title, subtitle, action, children,
 }: {
   title: string;
   subtitle?: string;
+  /** Sits on the heading rule, right-aligned. For controls that act on the
+   *  whole section - "Ask about this", an export - rather than on one row. */
+  action?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <section className="card">
-      <h2>{title}</h2>
+      <div className="card-head">
+        <h2>{title}</h2>
+        {action}
+      </div>
       {subtitle && <p className="subtitle">{subtitle}</p>}
       {children}
     </section>
