@@ -1847,3 +1847,15 @@ while sounding like it says something. The generated prose is only as true as
 its worst input, so the selector now requires the loss to exceed 1% before the
 clause is emitted at all, and the surrounding claim is conditional on whether
 the two ranges actually separate in the current window.
+
+**M-67 · The scatter's axis title was printed through its own tick labels, and
+only the confirming pass caught it.** With `width={52}` and the rotated title at
+`offset: 12`, the right-aligned tick text ran back from x=52 to about x=18 while
+the title sat centred on x=12 and is roughly 14px wide once turned, so "200%"
+and "100%" were drawn straight over "Annualised return". This was live before
+M-61 and survived the fix for it, because M-61 was verified with a crop of the
+tick *values* — which were now correct — rather than of the axis. Verifying the
+thing you changed is not the same as verifying the region you changed it in.
+Fixed with `width={64}` / `offset: 6`, which clears by 17px, and the arithmetic
+is written into the file so the next person changing the tick format knows what
+the constraint is.

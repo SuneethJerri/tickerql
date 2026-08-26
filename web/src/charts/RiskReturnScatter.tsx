@@ -127,9 +127,16 @@ export function RiskReturnScatter({ data, mode }: { data: RiskMetric[]; mode: Ch
           <YAxis
             type="number" dataKey="y" name="Annualised return" domain={yDomain}
             tick={{ fontSize: 11, fill: "var(--text-muted)" }} tickLine={false}
-            axisLine={false} width={52} unit="%" ticks={yTicks}
+            // Wide enough for the rotated axis title AND the tick text beside
+            // it. At width 52 / offset 12 the two overlapped: the ticks are
+            // right-aligned to the axis, so they run back from x=52 to about
+            // x=18, while the rotated title sits centred on x=12 and is ~14px
+            // wide once turned. "200%" was printed straight through the "A" of
+            // "Annualised". Rule of thumb: width > offset + tick text width + a
+            // gap, which the 64/6 below clears by 17px.
+            axisLine={false} width={64} unit="%" ticks={yTicks}
             label={{ value: "Annualised return", angle: -90, position: "insideLeft",
-                     offset: 12, fontSize: 11.5, fill: "var(--text-secondary)" }}
+                     offset: 6, fontSize: 11.5, fill: "var(--text-secondary)" }}
           />
           <ZAxis range={[70, 70]} />
           {/* Break-even: above this line an asset made money, below it lost. */}
