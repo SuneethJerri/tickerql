@@ -4,7 +4,8 @@
 # Values marked `sync: false` are deliberately NOT in this file: they are
 # secrets, and this file is public. Render prompts for each one on first apply.
 #
-# See docs/DEPLOY.md for the ordered runbook.
+# Deploy order is Neon, then this service, then Vercel: each step needs a value
+# the previous one produces.
 
 services:
   - type: web
@@ -14,7 +15,7 @@ services:
     # frontend 404s until VITE_API_BASE is updated on Vercel AND the frontend
     # is rebuilt - Vite inlines that value at build time. Nobody sees this
     # hostname but the bundle, so the rename buys nothing and costs an outage
-    # window. See docs/DEPLOY.md.
+    # window.
     name: sqlproj-api
     runtime: docker
 

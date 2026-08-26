@@ -4,7 +4,7 @@
  * separate axis stamped as [data-accent], so any accent works with any theme.
  *
  * Surfaces were validated against the chart series palette before being added -
- * see scripts/README-themes.md for the runs. Chart SERIES colours are not here;
+ * checked with web/scripts/validate_palette.js. Chart SERIES colours are not here;
  * they live in charts/palette.ts, keyed by a theme's chartBase.
  *
  * The dark block used to be duplicated between the media query and the

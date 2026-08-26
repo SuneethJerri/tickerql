@@ -7,7 +7,7 @@
  *
  * Every surface below was run through the dataviz validator against the
  * categorical set in charts/palette.ts, adjacent and all-pairs, before being
- * added. See web/scripts/README-themes.md for the runs.
+ * added. Check a new surface with web/scripts/validate_palette.js.
  */
 
 export const THEME_NAMES = ["light", "dark", "midnight", "graphite", "sepia"] as const;

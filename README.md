@@ -154,7 +154,7 @@ AGENT_EFFORT=                                   # blank omits output_config
 The Anthropic SDK appends `/v1/messages` itself, so a trailing `/v1` double-paths
 into a 405 and the config validator strips it. `output_config` is
 Anthropic-specific and a gateway may reject it outright, which is what the blank
-`AGENT_EFFORT` is for. Full runbook in [`docs/DEPLOY.md`](docs/DEPLOY.md).
+`AGENT_EFFORT` is for.
 
 ## What the data says
 
@@ -306,10 +306,10 @@ That rule shaped three of the four views.
 
 Five themes (Light, Dark, Midnight, Graphite, Sepia) on one axis and four accents
 on another, so any pairing works. Each theme surface goes through the dataviz
-validator against the series palette before it ships —
-[`web/scripts/README-themes.md`](web/scripts/README-themes.md) records the runs
-and the validator is vendored beside it, so the result is reproducible from a
-clone.
+validator against the series palette before it ships. The validator is
+vendored at [`web/scripts/validate_palette.js`](web/scripts/validate_palette.js)
+rather than pulled in as a dependency, so the check is reproducible from a clone
+instead of being a claim about a script that lives somewhere else.
 
 The validator only reads colour, so layout is checked by
 [`web/scripts/screenshot.py`](web/scripts/screenshot.py), which shoots every view
@@ -350,8 +350,9 @@ One thing to know before touching the CoinGecko path: `/market_chart/range`
 granularity depends on the range length — ≤ 2 days returns 5-minute data, 3–90
 days hourly, 91+ days daily. A 7-day refresh returned 187 points, which would
 have upserted over each other and stored an arbitrary intraday price as the
-daily close, corrupting every downstream figure with no error at any layer. The
-fix is a `_last_per_date()` aggregation, logged as M-11.
+daily close, corrupting every downstream figure with no error at any layer. It
+was caught because the probe printed an implausible bar count. The fix is a
+`_last_per_date()` aggregation.
 
 ## Layout
 
@@ -363,8 +364,6 @@ ingest/   Python CLI. Fetches OHLCV, upserts idempotently, refreshes views.
 api/      FastAPI. routers/ = analytics, agent/ = guard + prompt + runner.
 web/      Vite + React + TypeScript + Recharts.
 scripts/  insights.py — regenerates the README's numbers from the database.
-docs/     DECISIONS.md (every decision and every mistake, with what each cost),
-          DEPLOY.md (the ordered runbook).
 ```
 
 ## Tests
@@ -393,9 +392,17 @@ fail, since a passing test that cannot fail proves nothing.
 
 ## Deployment
 
-[`docs/DEPLOY.md`](docs/DEPLOY.md) has the ordered runbook: Neon → Render →
-Vercel → GitHub Actions. The artifacts are committed
-([`render.yaml`](render.yaml), [`api/Dockerfile`](api/Dockerfile),
+Neon, then Render, then Vercel, then the nightly GitHub Action — in that order,
+because each one needs a value the previous step produces. Every artifact is
+committed ([`render.yaml`](render.yaml), [`api/Dockerfile`](api/Dockerfile),
 [`web/vercel.json`](web/vercel.json),
 [`.github/workflows/daily-refresh.yml`](.github/workflows/daily-refresh.yml));
 the deploys themselves need accounts and are run by hand.
+
+Two settings are easy to get wrong. Vercel's **Root Directory must be `web`** —
+without it the build starts at the repository root, finds `api/pyproject.toml`
+and builds the FastAPI backend as a Python project. And `VITE_API_BASE` is
+inlined at **build** time, so changing it after a deploy needs a rebuild to take
+effect. Nothing secret belongs in a Vercel variable: this is a static build with
+no serverless functions, so a `VITE_`-prefixed value is compiled into the public
+bundle. Database credentials and the model API key live on Render.

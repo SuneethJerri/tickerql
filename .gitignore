@@ -30,3 +30,10 @@ CLAUDE.md
 
 # Screenshot pass output. web/scripts/screenshot.py writes 24+ PNGs per run.
 web/screenshots/
+
+# Working notes. Kept on disk and still maintained, but not published: the
+# decision log is a first-person working record including one write-up of a
+# credential exposure, and the deploy notes describe one person's accounts.
+docs/
+web/DEPLOY-NOTES.md
+web/scripts/README-themes.md
