@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api, type QueryResponse, type StreamEvent, type Turn } from "../api";
 import { downloadCsv, type CsvCell } from "../csv";
 import { Markdown } from "../components/Markdown";
+import { tokenizeSql } from "../sqlHighlight";
 import { Card } from "../components/ui";
 
 const SUGGESTIONS = [
@@ -300,7 +301,7 @@ function Answer({ result, events }: { result: QueryResponse; events: StreamEvent
         </div>
       )}
 
-      {result.sql && <SqlBlock sql={result.sql} />}
+      {result.sql && <SqlBlock sql={result.sql} blocked={blocked.length > 0} />}
 
       {result.columns.length > 0 && (
         <div className="md-table-wrap">
@@ -362,18 +363,29 @@ function Answer({ result, events }: { result: QueryResponse; events: StreamEvent
   );
 }
 
-function SqlBlock({ sql }: { sql: string }) {
+/** The query, always visible.
+ *
+ * It used to live in a <details>. That framed the one thing this product
+ * promises - that an answer can be checked against the query behind it - as an
+ * optional disclosure, and an audit trail nobody opens is decoration. The
+ * gutter carries the guard's verdict for the same reason: a security boundary
+ * that only becomes visible when it fails is invisible exactly when someone
+ * wants to be reassured by it.
+ */
+function SqlBlock({ sql, blocked }: { sql: string; blocked: boolean }) {
   const [copied, setCopied] = useState(false);
+  const tokens = tokenizeSql(sql);
   return (
-    <details className="sql" open>
-      <summary>
-        SQL that produced this answer
+    <div className="sql-artifact">
+      <div className="sql-head">
+        <span>SQL that produced this answer</span>
+        <span className="verdict" data-guard={blocked ? "blocked" : "accepted"}>
+          {blocked ? "guard blocked an earlier candidate" : "guard accepted"}
+        </span>
         <button
           type="button"
           className="chip copy"
-          onClick={(e) => {
-            // The summary is a toggle; copying should not also collapse it.
-            e.preventDefault();
+          onClick={() => {
             void navigator.clipboard?.writeText(sql).then(() => {
               setCopied(true);
               window.setTimeout(() => setCopied(false), 1500);
@@ -382,8 +394,20 @@ function SqlBlock({ sql }: { sql: string }) {
         >
           {copied ? "Copied" : "Copy"}
         </button>
-      </summary>
-      <pre className="sql-text">{sql}</pre>
-    </details>
+      </div>
+      {/* Spans, not markup: tokenizeSql returns data and this builds the
+          elements, so model output never reaches dangerouslySetInnerHTML. */}
+      <pre className="sql-text" data-guard={blocked ? "blocked" : "accepted"}>
+        {tokens.map((tok, i) =>
+          tok.kind === "txt" ? (
+            tok.text
+          ) : (
+            <span key={i} className={tok.kind}>
+              {tok.text}
+            </span>
+          ),
+        )}
+      </pre>
+    </div>
   );
 }
