@@ -207,7 +207,7 @@ def render_markdown(d: dict) -> str:
         f"{hi['sector']} ran {ratio:.1f}x {lo['sector']}'s volatility "
         f"({_pct(hi['annualized_volatility'])} vs {_pct(lo['annualized_volatility'])}) "
         f"and returned {_pct(hi['total_return'])} against "
-        f"{_pct(lo['total_return'])} — more risk and a worse outcome over the same "
+        f"{_pct(lo['total_return'])}: more risk and a worse outcome over the same "
         "window.",
         "",
         f"That is easy to dismiss as a crypto story, but the same thing shows up "
@@ -232,7 +232,7 @@ def render_markdown(d: dict) -> str:
         "### 2. Crypto diversifies a stock portfolio, not itself",
         "",
         f"Average pairwise correlation *within* crypto is "
-        f"**{d['crypto_crypto_corr']:.2f}**, the highest of any sector — but "
+        f"**{d['crypto_crypto_corr']:.2f}**, the highest of any sector, but "
         f"{runner_up[0]} is right behind at {runner_up[1]:.2f}, so tight internal "
         "correlation is a property of narrow sectors rather than something "
         "peculiar to crypto.",
@@ -264,11 +264,11 @@ def render_markdown(d: dict) -> str:
         "",
         f"{top['ticker']} posted the highest return in the set at "
         f"**{_pct(top['total_return'])}**, but ranks "
-        f"{_ordinal(ranked.index(top) + 1)} risk-adjusted — it took "
+        f"{_ordinal(ranked.index(top) + 1)} risk-adjusted, because it took "
         f"{_pct(top['annualized_volatility'])} volatility to get there. "
         f"**{best['ticker']}** leads at {best['return_per_unit_risk']:.2f} on "
         f"{_pct(best['annualized_volatility'])} volatility, with a "
-        f"{_pct(best['max_drawdown'])} maximum drawdown — the shallowest in the "
+        f"{_pct(best['max_drawdown'])} maximum drawdown, the shallowest in the "
         "set.",
         "",
         "| Asset | Sector | Return | Ann. vol | Return/risk | Max drawdown |",
@@ -291,7 +291,7 @@ def render_markdown(d: dict) -> str:
 
 
 def render_text(d: dict) -> str:
-    out = [f"Insights — trailing {WINDOW} days, {d['start']} to {d['as_of']}", ""]
+    out = [f"Insights: trailing {WINDOW} days, {d['start']} to {d['as_of']}", ""]
     out.append(f"  {'SECTOR':<12}{'RETURN':>9}{'VOL':>8}{'RATIO':>8}")
     for _, r in sorted(
         d["perf"].items(), key=lambda kv: kv[1]["return_per_unit_risk"] or -99, reverse=True
