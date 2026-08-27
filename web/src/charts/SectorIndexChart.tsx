@@ -146,3 +146,27 @@ export function SectorIndexChart({
     </div>
   );
 }
+
+
+/** The small-multiples grid with nothing in it.
+ *
+ * The default 280px block stood in for nineteen 84px panels laid out in a
+ * responsive grid, so the page grew by roughly seven hundred pixels the moment
+ * the data arrived. This is the same `.small-multiples` container and the same
+ * panel markup, so the columns break at the same widths and the height is
+ * right at all of them.
+ */
+export function SectorPanelsSkeleton({ count }: { count: number }) {
+  return (
+    <div className="small-multiples" role="status" aria-label="Loading">
+      {Array.from({ length: count }, (_, i) => (
+        <figure className="sm-panel" key={i}>
+          <figcaption>
+            <span className="skeleton ghost-caption" />
+          </figcaption>
+          <div className="skeleton" style={{ height: 84 }} />
+        </figure>
+      ))}
+    </div>
+  );
+}

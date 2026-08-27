@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, fmtPct, type SectorPerformance } from "../api";
-import { SectorIndexChart } from "../charts/SectorIndexChart";
+import { SectorIndexChart, SectorPanelsSkeleton } from "../charts/SectorIndexChart";
 import { PriceMaChart } from "../charts/PriceMaChart";
 import type { ThemeName } from "../charts/palette";
 import { StatTile } from "../components/StatTile";
@@ -130,7 +130,7 @@ export function Dashboard({ theme }: { theme: ThemeName }) {
             />
           }
         >
-          {index.isPending ? <Loading /> : index.error ? <ErrorNotice error={index.error} /> : (
+          {index.isPending ? <SectorPanelsSkeleton count={Math.max(sectorCount, 6)} /> : index.error ? <ErrorNotice error={index.error} /> : (
             <>
               <SectorIndexChart
                 data={index.data!}

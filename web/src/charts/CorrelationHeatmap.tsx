@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { divergingColor, inkOn, type ThemeName } from "./palette";
 
 /** Correlation heatmap on a diverging scale.
@@ -151,5 +151,53 @@ function Row({
         );
       })}
     </>
+  );
+}
+
+
+/** The heatmap's own geometry, with nothing in it.
+ *
+ * A fixed-height block cannot stand in for this. The cells are
+ * `aspect-ratio: 1`, so the grid's height is a function of the viewport width
+ * and the number of labels - a constant is wrong at every width but one, and
+ * the 420px it used to reserve was about a thousand pixels short at 1440,
+ * which threw the card below it down the page the moment the matrix landed.
+ * Rendering the real grid with empty cells is right at every width.
+ *
+ * Only the column-header band is approximated: its height comes from vertical
+ * text, and this has none.
+ *
+ * The cells do not shimmer. Three hundred and sixty-one animated gradients is
+ * a lot of movement to put on a page that is still loading, and the label
+ * ghosts already say the view is waiting.
+ */
+export function HeatmapSkeleton({ count, wide = false }: { count: number; wide?: boolean }) {
+  const slots = Array.from({ length: count }, (_, i) => i);
+  return (
+    <div
+      className={`heatmap${wide ? " wide" : ""}`}
+      style={{
+        gridTemplateColumns: `var(--heat-label) repeat(${count}, minmax(26px, 1fr))`,
+      }}
+      role="status"
+      aria-label="Loading"
+    >
+      <div />
+      {slots.map((c) => (
+        <div className="heat-axis col" key={`ghost-col-${c}`}>
+          <span className="skeleton ghost-col" />
+        </div>
+      ))}
+      {slots.map((r) => (
+        <Fragment key={`ghost-row-${r}`}>
+          <div className="heat-axis row">
+            <span className="skeleton ghost-row" />
+          </div>
+          {slots.map((c) => (
+            <div className="heat-cell ghost-cell" key={`ghost-${r}-${c}`} />
+          ))}
+        </Fragment>
+      ))}
+    </div>
   );
 }

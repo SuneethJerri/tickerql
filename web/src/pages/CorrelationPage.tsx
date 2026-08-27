@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
-import { CorrelationHeatmap, type HeatValue } from "../charts/CorrelationHeatmap";
+import { CorrelationHeatmap, HeatmapSkeleton, type HeatValue } from "../charts/CorrelationHeatmap";
 import { RollingCorrelationChart } from "../charts/RollingCorrelationChart";
 import type { ThemeName } from "../charts/palette";
 import { downloadCsv } from "../csv";
@@ -117,6 +117,7 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
     ? rollingPref
     : (rollingOptions[rollingOptions.length - 1]?.value ?? 30);
 
+  const sectorCount = new Set((assets.data ?? []).map((a) => a.sector)).size;
   const tickers = matrix.data?.tickers ?? [];
   const known = (t: string | null) => (t && tickers.includes(t) ? t : null);
 
@@ -206,7 +207,13 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
         }
       >
         {matrix.isPending || assets.isPending ? (
-          <Loading height={420} />
+          // Square cells mean the grid's height is set by its width, not by
+          // how many labels there are, so the count changes only how fine the
+          // mesh looks. It comes from the sector list when that has landed -
+          // `assets` is a much smaller request than the matrix and usually
+          // arrives first - and falls back to something that still reads as a
+          // matrix rather than as three dozen large blocks.
+          <HeatmapSkeleton count={Math.max(sectorCount, 16)} wide />
         ) : matrix.error ? (
           <ErrorNotice error={matrix.error} />
         ) : !model ? null : drillLabels ? (

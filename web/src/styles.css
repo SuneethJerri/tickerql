@@ -894,6 +894,13 @@ pre.sql-text[data-guard="blocked"] { border-left-color: var(--critical); }
   background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: var(--radius-sm);
 }
 @keyframes shimmer { to { background-position: -200% 0; } }
+
+/* Skeleton parts that have to sit inside a real grid cell rather than replace
+   it - see HeatmapSkeleton and SectorPanelsSkeleton. */
+.ghost-col { display: block; width: 9px; height: 120px; border-radius: 2px; }
+.ghost-row { display: block; width: 72%; height: 9px; border-radius: 2px; }
+.ghost-cell { background: var(--surface-2); }
+.ghost-caption { display: block; width: 60%; height: 9px; border-radius: 2px; }
 /* Motion. Charts keep isAnimationActive={false} - that was a deliberate call,
    and animating a data mark is not the same thing as animating a control. */
 .nav button, .chip, .btn, .segmented button, select, .table-toggle {
