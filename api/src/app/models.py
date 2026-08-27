@@ -117,6 +117,29 @@ class CorrelationMatrix(BaseModel):
     cells: list[CorrelationCell]
 
 
+class RollingCorrelationPoint(BaseModel):
+    date: date
+    correlation: float | None
+    observations: int
+
+
+class RollingCorrelation(BaseModel):
+    """Correlation between one pair, as a series rather than a summary.
+
+    `span_correlation` is the single figure the heatmap shows for this pair over
+    the same span, carried so the chart can draw it as a reference line. The
+    distance between that line and the series is the whole point of the view:
+    it is how much the one number is hiding.
+    """
+
+    ticker_a: str
+    ticker_b: str
+    window_days: int
+    span_days: int
+    span_correlation: float | None
+    points: list[RollingCorrelationPoint]
+
+
 class PeriodOut(BaseModel):
     period_start: date
     first_date: date

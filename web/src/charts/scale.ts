@@ -59,6 +59,61 @@ export function baselineScale(
   return { domain: [round(start), round(end)], ticks };
 }
 
+/** A y-domain for a correlation series.
+ *
+ * Correlation is bounded at -1 and 1, which tempts a fixed [-1, 1] axis - and
+ * that was the first attempt. It hides the finding: a pair whose trailing
+ * correlation ran from 0.04 to 0.34 (more than tripling) drew as a flat line
+ * occupying a seventh of the panel. Autoscaling to the data is the opposite
+ * failure: a pair that never leaves 0.38-0.42 fills the panel with noise and
+ * reads as violent movement.
+ *
+ * So: snap to quarter steps, always keep zero in view because zero is where
+ * the pair stops moving together and starts moving apart, and never show less
+ * than half the full scale. Under that floor a flat pair still looks flat and
+ * a moving pair still looks like it moves.
+ */
+export function correlationScale(
+  values: Iterable<number>, minSpan = 1, step = 0.25,
+): { domain: [number, number]; ticks: number[] } {
+  let low = 0;
+  let high = 0;
+  for (const v of values) {
+    if (!Number.isFinite(v)) continue;
+    if (v < low) low = v;
+    if (v > high) high = v;
+  }
+
+  let lo = Math.max(-1, Math.floor(low / step) * step);
+  let hi = Math.min(1, Math.ceil(high / step) * step);
+
+  // Grow a step at a time, alternating sides, so the padding is as even as the
+  // clamps allow rather than all landing below the data.
+  //
+  // Bounded rather than a bare `while`: widening from the narrowest domain to
+  // the whole scale takes 2/step steps, so anything past that is a bug, and
+  // the bound turns it into a wrong chart instead of a hung tab. Found by a
+  // mutation that seeded `low` from the data with no empty-input guard - the
+  // test suite did not fail, it hung, and stayed hung for every later run
+  // until the file was restored.
+  const maxSteps = Math.ceil(2 / step) + 2;
+  for (
+    let i = 0;
+    i < maxSteps && hi - lo < minSpan - 1e-9 && (lo > -1 || hi < 1);
+    i++
+  ) {
+    if (lo > -1) lo = Math.max(-1, lo - step);
+    if (hi - lo >= minSpan - 1e-9) break;
+    if (hi < 1) hi = Math.min(1, hi + step);
+  }
+
+  const ticks: number[] = [];
+  const steps = Math.round((hi - lo) / step);
+  for (let i = 0; i <= steps; i++) ticks.push(round(lo + i * step));
+
+  return { domain: [round(lo), round(hi)], ticks };
+}
+
 /** The nearest 1/2/2.5/5/10 x 10^k at or above `raw`. */
 function niceStep(raw: number): number {
   if (!(raw > 0)) return 1;

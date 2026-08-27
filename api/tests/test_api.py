@@ -44,6 +44,7 @@ def test_openapi_documents_every_endpoint(client) -> None:
         "/api/analytics/correlation", "/api/analytics/periods",
         "/api/analytics/moving-averages/{ticker}",
         "/api/analytics/sparklines",
+        "/api/analytics/rolling-correlation",
     }
     assert expected <= set(paths)
 
@@ -196,6 +197,68 @@ def test_correlation_unknown_ticker_is_404(client) -> None:
     r = client.get("/api/analytics/correlation", params={"tickers": "AAPL,FAKE"})
     assert r.status_code == 404
     assert "FAKE" in r.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Rolling correlation
+# ---------------------------------------------------------------------------
+
+def test_rolling_correlation_returns_a_series(client) -> None:
+    body = client.get(
+        "/api/analytics/rolling-correlation",
+        params={"a": "aapl", "b": "msft", "window": 60, "span": 365},
+    ).json()
+    assert body["ticker_a"] == "AAPL" and body["ticker_b"] == "MSFT"
+    assert body["window_days"] == 60 and body["span_days"] == 365
+    assert len(body["points"]) > 100
+    assert all(p["observations"] == 60 for p in body["points"])
+    dates = [p["date"] for p in body["points"]]
+    assert dates == sorted(dates)
+
+
+def test_rolling_correlation_reference_line_is_the_matrix_figure(client) -> None:
+    """The chart draws `span_correlation` as the line the series moves around.
+    If it disagreed with the heatmap, the two views would contradict each other
+    about the same pair over the same window."""
+    rolling = client.get(
+        "/api/analytics/rolling-correlation",
+        params={"a": "AAPL", "b": "BTC", "window": 60, "span": 365},
+    ).json()
+    matrix = client.get(
+        "/api/analytics/correlation", params={"window": 365, "tickers": "AAPL,BTC"}
+    ).json()
+    cell = next(
+        c for c in matrix["cells"]
+        if c["ticker_a"] == "AAPL" and c["ticker_b"] == "BTC"
+    )
+    assert rolling["span_correlation"] == pytest.approx(cell["correlation"])
+
+
+def test_rolling_correlation_of_a_pair_with_itself_is_flat(client) -> None:
+    body = client.get(
+        "/api/analytics/rolling-correlation",
+        params={"a": "AAPL", "b": "AAPL", "window": 30, "span": 180},
+    ).json()
+    assert body["span_correlation"] == pytest.approx(1.0)
+    assert all(p["correlation"] == pytest.approx(1.0) for p in body["points"])
+
+
+def test_rolling_correlation_unknown_ticker_is_404(client) -> None:
+    r = client.get(
+        "/api/analytics/rolling-correlation", params={"a": "AAPL", "b": "FAKE"}
+    )
+    assert r.status_code == 404
+    assert "FAKE" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("window", [4, 366])
+def test_rolling_correlation_window_is_bounded(client, window: int) -> None:
+    """An unbounded window is unbounded database work on a public endpoint."""
+    r = client.get(
+        "/api/analytics/rolling-correlation",
+        params={"a": "AAPL", "b": "MSFT", "window": window},
+    )
+    assert r.status_code == 422
 
 
 # ---------------------------------------------------------------------------

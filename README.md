@@ -259,6 +259,7 @@ Four conventions that are easy to get wrong:
 | `GET` | `/api/analytics/sector-index` | equal-weighted cumulative index, rebased to 100 |
 | `GET` | `/api/analytics/volatility` | volatility ranking |
 | `GET` | `/api/analytics/correlation` | pairwise matrix; 18,225 cells for 135 assets |
+| `GET` | `/api/analytics/rolling-correlation` | one pair's correlation as a series, trailing window on every date |
 | `GET` | `/api/analytics/periods` | best/worst days or months |
 | `GET` | `/api/analytics/moving-averages/{ticker}` | 20/50/200-day, with an `is_partial` flag during ramp-up |
 | `GET` | `/api/analytics/risk-return` | the scatter feed |
@@ -302,6 +303,7 @@ That rule shaped three of the four views.
 | **Dashboard** | 19 sector small multiples, shared y-domain, one hue | No colour cap at all: identity is the panel label, comparison is the shared scale. A 19-line chart is unreadable at any palette size |
 | **Risk vs return** | Scatter, two hues (equity/crypto), six labelled extremes | Labelling all 135 points printed one solid block of overlapping text. The six are computed from the data, so the set moves with the window |
 | **Correlation** | 19×19 sector means, click a cell to drill into its assets | 135×135 is 18,225 cells and ~3,500 px tall. A sector cell is the mean of the pairwise correlations behind it, self-pairs excluded so intra-sector cells are not inflated by sector size |
+| **Correlation over time** | one pair's trailing-window correlation on every date, under the matrix | A matrix cell is a mean. AAPL and BTC score 0.15 over three years and their 60-day correlation runs from −0.19 to +0.51 across it; the dashed reference line is the matrix figure, so the gap is visible |
 | **Ask** | Conversational transcript with live progress | Follow-ups refer back to earlier turns; every step is a real boundary in the agent loop, not a timer |
 
 Five themes (Light, Dark, Midnight, Graphite, Sepia) on one axis and four

@@ -2,12 +2,15 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { CorrelationHeatmap, type HeatValue } from "../charts/CorrelationHeatmap";
+import { RollingCorrelationChart } from "../charts/RollingCorrelationChart";
 import type { ThemeName } from "../charts/palette";
 import { downloadCsv } from "../csv";
 import {
   Card, ErrorNotice, Loading, WindowPicker,
   CORRELATION_WINDOWS, CORRELATION_WINDOW_OPTIONS,
+  ROLLING_WINDOWS, ROLLING_WINDOW_OPTIONS,
 } from "../components/ui";
+import { AskAbout } from "../components/AskAbout";
 import { setUrlParams, useUrlNumber, useUrlOptional } from "../urlState";
 
 /** Correlation, sector-first.
@@ -37,6 +40,14 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
   // never land on a half-applied state the reader never saw.
   const setDrill = (next: [string, string] | null) =>
     setUrlParams(next ? { sa: next[0], sb: next[1] } : { sa: null, sb: null });
+
+  // The pair the rolling series is drawn for. Replaced rather than pushed: it
+  // is a filter on a card that is always on screen, not a change of view, and
+  // pushing would make `back` walk through every pair the reader tried.
+  const pinnedA = useUrlOptional("pa");
+  const pinnedB = useUrlOptional("pb");
+  const setPair = (a: string, b: string) => setUrlParams({ pa: a, pb: b }, "replace");
+  const [rollingPref, setRolling] = useUrlNumber("rw", ROLLING_WINDOWS, 60, "replace");
 
   const matrix = useQuery({
     queryKey: ["correlation", windowDays],
@@ -98,6 +109,53 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
     return tickers.size ? [...tickers].sort() : null;
   }, [model, drillA, drillB]);
 
+  // A 30-day window over a 90-day span is thirty-odd points; a 90-day window
+  // over the same span is one. Offer only the windows the span can carry, and
+  // fall back to the widest that fits rather than fetching a series of length 1.
+  const rollingOptions = ROLLING_WINDOW_OPTIONS.filter((o) => o.value * 2 <= windowDays);
+  const rollingDays = rollingOptions.some((o) => o.value === rollingPref)
+    ? rollingPref
+    : (rollingOptions[rollingOptions.length - 1]?.value ?? 30);
+
+  const tickers = matrix.data?.tickers ?? [];
+  const known = (t: string | null) => (t && tickers.includes(t) ? t : null);
+
+  // The default pair is the most correlated distinct pair in the matrix, not
+  // the alphabetically first two. Taking tickers[0] and tickers[1] opened the
+  // card on AAPL and ABBV - two names with no relationship, whose series is a
+  // flat line at zero, which makes the chart look like it is not working.
+  // Reading it off the matrix that is already loaded costs one pass and no
+  // hardcoded tickers.
+  const strongestPair = useMemo(() => {
+    let best: { a: string; b: string; v: number } | null = null;
+    for (const c of matrix.data?.cells ?? []) {
+      if (c.ticker_a >= c.ticker_b || c.correlation == null) continue;
+      if (!best || c.correlation > best.v) {
+        best = { a: c.ticker_a, b: c.ticker_b, v: c.correlation };
+      }
+    }
+    return best;
+  }, [matrix.data]);
+
+  const pairA = known(pinnedA) ?? strongestPair?.a ?? tickers[0] ?? null;
+  const pairB = known(pinnedB) ?? strongestPair?.b ?? tickers[1] ?? null;
+
+  const rolling = useQuery({
+    queryKey: ["rolling-correlation", pairA, pairB, rollingDays, windowDays],
+    queryFn: () => api.rollingCorrelation(pairA!, pairB!, rollingDays, windowDays),
+    enabled: Boolean(pairA && pairB),
+  });
+
+  // The one sentence a matrix cell cannot say. Rendered from the series rather
+  // than written into the subtitle, because it is the finding, not the caption.
+  const swing = useMemo(() => {
+    const values = (rolling.data?.points ?? [])
+      .map((p) => p.correlation)
+      .filter((v): v is number => v != null);
+    if (values.length < 2) return null;
+    return { low: Math.min(...values), high: Math.max(...values) };
+  }, [rolling.data]);
+
   // The visible grid, long rather than wide: 361 sector cells or a ticker
   // block, one row per pair, which is the shape a spreadsheet can pivot.
   const exportPairs = () => {
@@ -143,7 +201,7 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
         }
         subtitle={
           drill && drillLabels
-            ? "Every asset in the selected sectors, pair by pair."
+            ? "Every asset in the selected sectors, pair by pair. Click a cell to draw that pair's correlation over time below."
             : "Each cell is the mean correlation across every asset pair spanning the two sectors, with self-pairs excluded. Click a cell to see the assets behind it. Cross-asset pairs use only the days both assets traded — crypto trades weekends and equities do not, so padding would drag every crypto/equity pair toward zero."
         }
       >
@@ -157,6 +215,7 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
             cellAt={(a, b) => model.pairs.get(`${a}|${b}`)}
             theme={theme}
             unit="shared days"
+            onSelect={setPair}
           />
         ) : (
           <CorrelationHeatmap
@@ -165,6 +224,75 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
             theme={theme}
             unit="pairs"
             onSelect={(a, b) => setDrill([a, b])}
+          />
+        )}
+      </Card>
+
+      <Card
+        title={
+          pairA && pairB
+            ? `${pairA} and ${pairB}: correlation over time`
+            : "Correlation over time"
+        }
+        subtitle={
+          `Correlation over a trailing window of ${rollingDays} shared trading days, ` +
+          "drawn on every date in the span. The dashed line is the single figure the " +
+          "matrix above shows for this pair — a matrix cell is a mean, and a mean of " +
+          "0.4 can be a pair that sat at 0.4 all year or one that spent half the span " +
+          "at 0.8 and half at 0.0. Windows without a full set of observations behind " +
+          "them are not drawn, so the left edge is as well-founded as the right."
+        }
+        action={
+          pairA && pairB ? (
+            <AskAbout
+              question={`How has the correlation between ${pairA} and ${pairB} changed over the last ${windowDays} days, using a trailing ${rollingDays}-day window?`}
+            />
+          ) : undefined
+        }
+      >
+        <div className="controls">
+          <span className="control">
+            Pair
+            <select
+              value={pairA ?? ""} aria-label="First ticker"
+              onChange={(e) => setPair(e.target.value, pairB ?? "")}
+            >
+              {tickers.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <select
+              value={pairB ?? ""} aria-label="Second ticker"
+              onChange={(e) => setPair(pairA ?? "", e.target.value)}
+            >
+              {tickers.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </span>
+          {rollingOptions.length > 1 && (
+            <WindowPicker
+              value={rollingDays} onChange={setRolling} options={rollingOptions}
+              label="Trailing"
+            />
+          )}
+          {swing && (
+            <span className="control muted">
+              {swing.low.toFixed(2)} to {swing.high.toFixed(2)} across the span
+            </span>
+          )}
+        </div>
+
+        {rolling.isPending ? (
+          <Loading height={260} />
+        ) : rolling.error ? (
+          <ErrorNotice error={rolling.error} />
+        ) : !rolling.data?.points.length ? (
+          <div className="hint muted">
+            No window in this span has {rollingDays} shared trading days behind it.
+          </div>
+        ) : (
+          <RollingCorrelationChart
+            points={rolling.data.points}
+            spanCorrelation={rolling.data.span_correlation}
+            windowDays={rollingDays}
+            theme={theme}
           />
         )}
       </Card>

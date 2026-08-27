@@ -41,7 +41,7 @@ def test_all_queries_are_discoverable() -> None:
     expected = {
         "assets", "price_history", "sector_performance", "sector_index",
         "asset_risk_metrics", "correlation_matrix", "best_worst_periods",
-        "moving_averages",
+        "moving_averages", "rolling_correlation",
     }
     assert expected <= found, f"missing queries: {expected - found}"
 
@@ -224,6 +224,137 @@ def test_correlation_uses_only_common_trading_days(conn) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Rolling correlation
+# ---------------------------------------------------------------------------
+
+def _pearson(xs, ys) -> float:
+    """Pearson's r, written out rather than called from statistics.correlation,
+    so this is an independent check of the SQL rather than the same routine
+    twice."""
+    n = len(xs)
+    mx, my = fmean(xs), fmean(ys)
+    cov = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    vx = sum((x - mx) ** 2 for x in xs)
+    vy = sum((y - my) ** 2 for y in ys)
+    return cov / math.sqrt(vx * vy)
+
+
+def _shared_returns(conn, a: str, b: str):
+    """The two return series on the dates both assets traded, oldest first."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT ra.date, ra.simple_return, rb.simple_return
+            FROM market.daily_returns ra
+            JOIN market.assets aa ON aa.id = ra.asset_id AND aa.ticker = %s
+            JOIN market.assets ab ON ab.ticker = %s
+            JOIN market.daily_returns rb
+              ON rb.asset_id = ab.id AND rb.date = ra.date
+            WHERE ra.simple_return IS NOT NULL AND rb.simple_return IS NOT NULL
+            ORDER BY ra.date
+            """,
+            (a, b),
+        )
+        return cur.fetchall()
+
+
+def test_rolling_correlation_returns_only_full_windows(conn) -> None:
+    rows = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="MSFT",
+             rolling_days=60, span_days=3650)
+    assert rows, "expected a series"
+    assert all(r["observations"] == 60 for r in rows), (
+        "a partial window must not be plotted: a 60-day correlation built from "
+        "12 observations is not a 60-day correlation"
+    )
+    dates = [r["date"] for r in rows]
+    assert dates == sorted(dates)
+    assert all(-1.0 <= r["correlation"] <= 1.0 for r in rows)
+
+    shared = _shared_returns(conn, "AAPL", "MSFT")
+    assert len(rows) == len(shared) - 60 + 1, (
+        "one point per date with a full trailing frame, and no more"
+    )
+
+
+def test_rolling_correlation_of_an_asset_with_itself_is_one(conn) -> None:
+    rows = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="AAPL",
+             rolling_days=30, span_days=365)
+    assert rows
+    assert all(r["correlation"] == pytest.approx(1.0) for r in rows)
+
+
+def test_rolling_correlation_matches_independent_python(conn) -> None:
+    """Recompute the last window in Python from raw returns."""
+    rolling = 60
+    rows = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="BTC",
+             rolling_days=rolling, span_days=365)
+    shared = _shared_returns(conn, "AAPL", "BTC")
+
+    by_date = {r[0]: (float(r[1]), float(r[2])) for r in shared}
+    ordered = [d for d, _ in sorted(by_date.items())]
+
+    for row in (rows[0], rows[len(rows) // 2], rows[-1]):
+        end = ordered.index(row["date"])
+        frame = ordered[end - rolling + 1 : end + 1]
+        assert len(frame) == rolling
+        xs = [by_date[d][0] for d in frame]
+        ys = [by_date[d][1] for d in frame]
+        assert row["correlation"] == pytest.approx(_pearson(xs, ys), abs=1e-9), (
+            f"SQL and Python disagree on the {rolling}-day window ending {row['date']}"
+        )
+
+
+def test_rolling_correlation_uses_common_trading_days(conn) -> None:
+    """The window counts shared observations, not calendar days.
+
+    BTC trades weekends and AAPL does not, so a 60-observation window on the
+    pair spans roughly 84 calendar days, not 60.
+    """
+    rows = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="BTC",
+             rolling_days=60, span_days=365)
+    shared = _shared_returns(conn, "AAPL", "BTC")
+    dates = [r[0] for r in shared]
+    end = dates.index(rows[-1]["date"])
+    frame = dates[end - 59 : end + 1]
+    calendar_span = (frame[-1] - frame[0]).days
+    assert calendar_span > 60, (
+        "60 shared trading days must span more than 60 calendar days"
+    )
+
+
+def test_rolling_correlation_trims_after_rolling_not_before(conn) -> None:
+    """The span selects which points are returned; it must not also decide which
+    observations the window may see.
+
+    Scoping the input to the span instead would silently cost the first
+    `rolling_days` points of every span - a 180-day request would begin three
+    months in, and the values it did return would look perfectly reasonable.
+    That failure is invisible in the values, so this test counts rows.
+    """
+    with conn.cursor() as cur:
+        cur.execute("SELECT max(date) FROM market.daily_returns")
+        as_of = cur.fetchone()[0]
+
+    span = 180
+    narrow = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="MSFT",
+               rolling_days=60, span_days=span)
+    shared = [r[0] for r in _shared_returns(conn, "AAPL", "MSFT")]
+    expected = [d for d in shared if (as_of - d).days < span]
+
+    assert [r["date"] for r in narrow] == expected, (
+        "every shared trading day inside the span should carry a point"
+    )
+
+    wide = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="MSFT",
+             rolling_days=60, span_days=730)
+    wide_by_date = {r["date"]: r["correlation"] for r in wide}
+    for r in narrow:
+        assert r["correlation"] == pytest.approx(wide_by_date[r["date"]]), (
+            "the same date must carry the same value whatever the span"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Best / worst periods
 # ---------------------------------------------------------------------------
 
@@ -376,6 +507,8 @@ def test_every_query_runs_under_the_readonly_api_role(env) -> None:
         "best_worst_periods": {"ticker": "AAPL", "granularity": "month",
                                "window_days": 365, "n": 2},
         "moving_averages": {"ticker": "AAPL", "windows": [20], "window_days": 90},
+        "rolling_correlation": {"ticker_a": "AAPL", "ticker_b": "BTC",
+                                "rolling_days": 60, "span_days": 365},
     }
     with psycopg.connect(api_url) as c:
         for name, params in cases.items():

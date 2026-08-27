@@ -85,18 +85,29 @@ export const CORRELATION_WINDOW_OPTIONS = [
 export const METRIC_WINDOWS = WINDOWS.map((w) => w.value);
 export const CORRELATION_WINDOWS = CORRELATION_WINDOW_OPTIONS.map((w) => w.value);
 
+/** Trailing windows for the rolling-correlation series, in shared trading days.
+ *  Which of them are offered depends on the span: a 90-day window over a
+ *  90-day span is one point, not a series. */
+export const ROLLING_WINDOW_OPTIONS = [
+  { value: 30, label: "30d" },
+  { value: 60, label: "60d" },
+  { value: 90, label: "90d" },
+];
+export const ROLLING_WINDOWS = ROLLING_WINDOW_OPTIONS.map((w) => w.value);
+
 /** Filters live in one row above the charts. */
 export function WindowPicker({
-  value, onChange, options = WINDOWS,
+  value, onChange, options = WINDOWS, label = "Window",
 }: {
   value: number;
   onChange: (v: number) => void;
   options?: { value: number; label: string }[];
+  label?: string;
 }) {
   return (
     <span className="control">
-      Window
-      <span className="segmented" role="group" aria-label="Time window">
+      {label}
+      <span className="segmented" role="group" aria-label={label}>
         {options.map((o) => (
           <button key={o.value} aria-pressed={value === o.value} onClick={() => onChange(o.value)}>
             {o.label}

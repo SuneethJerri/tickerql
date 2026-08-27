@@ -25,6 +25,8 @@ from app.models import (
     PeriodOut,
     PriceBar,
     PriceSeries,
+    RollingCorrelation,
+    RollingCorrelationPoint,
     SectorIndexPoint,
     SectorPerformanceOut,
     SparklineSeries,
@@ -231,6 +233,71 @@ def correlation(
         window_days=window,
         tickers=sorted({c.ticker_a for c in cells}),
         cells=cells,
+    )
+
+
+RollingWindowDays = Annotated[
+    int, Query(ge=5, le=365, description="Trailing window, in shared trading days.")
+]
+
+
+@router.get("/analytics/rolling-correlation", response_model=RollingCorrelation)
+def rolling_correlation(
+    a: str = Query(..., description="First ticker."),
+    b: str = Query(..., description="Second ticker."),
+    window: RollingWindowDays = 60,
+    span: WindowDays = 730,
+) -> RollingCorrelation:
+    """Correlation between one pair over time.
+
+    The matrix endpoint gives one number per pair over a window; this gives the
+    trailing-window correlation on every date in the span, so a pair that
+    averages 0.4 by spending half the span at 0.8 and half at 0.0 is
+    distinguishable from one that sat at 0.4 throughout.
+
+    A pair may be the same ticker twice - the answer is a flat 1.0, which is a
+    legitimate thing to ask for and a useful sanity check on the chart.
+    """
+    with api_connection() as conn:
+        ticker_a = _require_ticker(conn, a)
+        ticker_b = _require_ticker(conn, b)
+        rows = sql.fetch_all(
+            conn,
+            "rolling_correlation",
+            {
+                "ticker_a": ticker_a,
+                "ticker_b": ticker_b,
+                "rolling_days": window,
+                "span_days": span,
+            },
+        )
+        # The single figure for the same pair over the same span, from the same
+        # query the heatmap uses. Recomputing it here with different SQL would
+        # let the reference line drift away from the number it is meant to be.
+        pair = sql.fetch_all(
+            conn,
+            "correlation_matrix",
+            {"window_days": span, "tickers": sorted({ticker_a, ticker_b})},
+        )
+
+    # Set equality picks the one cell that spans both tickers, and picks the
+    # diagonal when the two are the same ticker.
+    span_correlation = next(
+        (
+            r["correlation"]
+            for r in pair
+            if {r["ticker_a"], r["ticker_b"]} == {ticker_a, ticker_b}
+        ),
+        None,
+    )
+
+    return RollingCorrelation(
+        ticker_a=ticker_a,
+        ticker_b=ticker_b,
+        window_days=window,
+        span_days=span,
+        span_correlation=span_correlation,
+        points=[RollingCorrelationPoint(**r) for r in rows],
     )
 
 

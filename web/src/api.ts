@@ -84,6 +84,22 @@ export interface CorrelationCell {
   observations: number;
 }
 
+export interface RollingCorrelationPoint {
+  date: string;
+  correlation: number | null;
+  observations: number;
+}
+
+export interface RollingCorrelation {
+  ticker_a: string;
+  ticker_b: string;
+  window_days: number;
+  span_days: number;
+  /** The single figure the heatmap shows for this pair over the same span. */
+  span_correlation: number | null;
+  points: RollingCorrelationPoint[];
+}
+
 export interface CorrelationMatrix {
   window_days: number;
   tickers: string[];
@@ -213,6 +229,11 @@ export const api = {
     request<CorrelationMatrix>(
       `/api/analytics/correlation?window=${window}` +
         (tickers?.length ? `&tickers=${tickers.join(",")}` : ""),
+    ),
+  rollingCorrelation: (a: string, b: string, window: number, span: number) =>
+    request<RollingCorrelation>(
+      `/api/analytics/rolling-correlation?a=${encodeURIComponent(a)}` +
+        `&b=${encodeURIComponent(b)}&window=${window}&span=${span}`,
     ),
   movingAverages: (ticker: string, windows: number[], window: number) =>
     request<MovingAverageSeries>(

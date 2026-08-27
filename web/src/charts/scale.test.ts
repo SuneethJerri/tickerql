@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { baselineScale } from "./scale.ts";
+import { baselineScale, correlationScale } from "./scale.ts";
 
 const CASES: [string, number[]][] = [
   ["a typical rebase", [94.2, 103.1, 118.7]],
@@ -69,4 +69,71 @@ test("ticks are round numbers, evenly spaced", () => {
   // numbers like 93.7 and 100.6.
   const mantissa = step / Math.pow(10, Math.floor(Math.log10(step)));
   assert.ok([1, 2, 2.5, 5].some((m) => Math.abs(m - mantissa) < 1e-9), `step ${step}`);
+});
+
+
+/* ---------- correlationScale ---------- */
+
+const CORR_CASES: [string, number[]][] = [
+  ["a pair that barely moves", [0.38, 0.39, 0.41, 0.42]],
+  ["a pair that tripled", [0.04, 0.11, 0.22, 0.34]],
+  ["a pair that crosses zero", [-0.19, -0.05, 0.11, 0.51]],
+  ["a pair pinned near +1", [0.94, 0.97, 0.99, 1.0]],
+  ["a pair pinned near -1", [-0.99, -0.97, -0.93]],
+  ["the full swing", [-0.98, 0.0, 0.99]],
+  ["a self-pair", [1, 1, 1, 1]],
+  ["one point", [0.3]],
+  ["nothing", []],
+];
+
+for (const [name, values] of CORR_CASES) {
+  test(`correlationScale keeps every value inside the domain: ${name}`, () => {
+    const { domain } = correlationScale(values);
+    for (const v of values) {
+      assert.ok(v >= domain[0] - 1e-9 && v <= domain[1] + 1e-9, `${v} outside ${domain}`);
+    }
+  });
+
+  // At the default minimum span of 1 inside a [-1, 1] clamp, zero cannot fall
+  // outside the domain whatever the anchor does - so this is asserted at a
+  // span narrow enough for the anchor to be the only thing holding it.
+  test(`correlationScale keeps zero in view: ${name}`, () => {
+    for (const minSpan of [1, 0.25]) {
+      const { domain } = correlationScale(values, minSpan);
+      assert.ok(domain[0] <= 0 && domain[1] >= 0, `zero outside ${domain} at ${minSpan}`);
+    }
+  });
+
+  test(`correlationScale stays inside [-1, 1]: ${name}`, () => {
+    const { domain } = correlationScale(values);
+    assert.ok(domain[0] >= -1 && domain[1] <= 1, `${domain} escapes the bounds`);
+  });
+
+  test(`correlationScale never shows less than half the scale: ${name}`, () => {
+    const { domain } = correlationScale(values);
+    assert.ok(domain[1] - domain[0] >= 1 - 1e-9, `span ${domain[1] - domain[0]} too small`);
+  });
+
+  test(`correlationScale ticks span the domain on a quarter step: ${name}`, () => {
+    const { domain, ticks } = correlationScale(values);
+    assert.equal(ticks[0], domain[0]);
+    assert.equal(ticks[ticks.length - 1], domain[1]);
+    for (const t of ticks) {
+      assert.ok(Math.abs(t * 4 - Math.round(t * 4)) < 1e-9, `tick ${t} is not a quarter`);
+    }
+  });
+}
+
+test("correlationScale does not autoscale a flat pair to fill the panel", () => {
+  const flat = correlationScale([0.38, 0.39, 0.41, 0.42]);
+  const used = (0.42 - 0.38) / (flat.domain[1] - flat.domain[0]);
+  assert.ok(used < 0.1, `a flat pair used ${(used * 100).toFixed(0)}% of the panel`);
+});
+
+test("correlationScale gives a moving pair visibly more of the panel than a flat one", () => {
+  const span = (v: number[]) => {
+    const { domain } = correlationScale(v);
+    return (Math.max(...v) - Math.min(...v)) / (domain[1] - domain[0]);
+  };
+  assert.ok(span([-0.19, 0.51]) > span([0.38, 0.42]) * 5);
 });
