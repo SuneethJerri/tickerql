@@ -85,23 +85,38 @@ export function Dashboard({ theme }: { theme: ThemeName }) {
           every dashboard template does; a readout is what an instrument does,
           and the rules between the columns already separate them. */}
       <div className="readout">
-        <StatTile label="Assets tracked" value={String(assets.data?.length ?? "—")} />
+        <StatTile
+          label="Assets tracked"
+          value={String(assets.data?.length ?? "—")}
+          explain="How many assets are tracked in each sector, and how many of them are stocks versus crypto?"
+        />
         <StatTile
           label="Best risk-adjusted"
           value={best?.sector ?? "—"}
           delta={best ? `${best.return_per_unit_risk?.toFixed(2)} return per unit risk` : undefined}
           deltaDirection="up"
+          explain={
+            best
+              ? `Show how the ${best.sector} sector's return per unit of risk over the last ${windowDays} days is built up: the mean and the standard deviation of its equal-weighted daily returns, and the annualised return and volatility that come from them.`
+              : undefined
+          }
         />
         <StatTile
           label="Weakest"
           value={worst?.sector ?? "—"}
           delta={worst ? `${worst.return_per_unit_risk?.toFixed(2)} return per unit risk` : undefined}
           deltaDirection="down"
+          explain={
+            worst
+              ? `Show how the ${worst.sector} sector's return per unit of risk over the last ${windowDays} days is built up, and how many trading days went into it.`
+              : undefined
+          }
         />
         <StatTile
           label="Most volatile"
           value={widest?.sector ?? "—"}
           delta={widest ? `${fmtPct(widest.annualized_volatility)} annualised` : undefined}
+          explain={`Rank every sector by annualised volatility over the last ${windowDays} days, computed from the standard deviation of its equal-weighted daily returns, and show the number of trading days behind each figure.`}
         />
       </div>
 

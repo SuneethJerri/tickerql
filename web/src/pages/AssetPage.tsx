@@ -95,21 +95,25 @@ export function AssetPage({ theme }: { theme: ThemeName }) {
               value={fmtPct(metrics?.annualized_return)}
               delta={metrics ? `${fmtPct(metrics.total_return)} over the window` : undefined}
               deltaDirection={(metrics?.annualized_return ?? 0) >= 0 ? "up" : "down"}
+              explain={`Explain ${ticker}'s annualised return over the last ${windowDays} days: show the first and last adjusted close in the window, the total return between them, and the annualised figure that comes from the mean daily log return.`}
             />
             <StatTile
               label="Annualised volatility"
               value={fmtPct(metrics?.annualized_volatility)}
               delta={metrics ? `rank ${metrics.volatility_rank} of ${risk.data?.length ?? "—"}` : undefined}
+              explain={`Explain ${ticker}'s annualised volatility over the last ${windowDays} days: show how many daily returns went into it, the standard deviation of those daily log returns, and the annualisation factor applied.`}
             />
             <StatTile
               label="Return per unit risk"
               value={metrics?.return_per_unit_risk?.toFixed(2) ?? "—"}
               delta={peers ? `${ordinal(peers.rank)} of ${peers.total} in ${peers.sector}` : undefined}
+              explain={`Rank every asset in ${ticker}'s sector by return per unit of risk over the last ${windowDays} days, showing the annualised return and volatility behind each one, so I can see where ${ticker} sits.`}
             />
             <StatTile
               label="Max drawdown"
               value={fmtPct(metrics?.max_drawdown)}
               delta={metrics ? `${fmtCompact(metrics.avg_volume)} avg volume` : undefined}
+              explain={`Explain ${ticker}'s maximum drawdown over the last ${windowDays} days: show the running peak close, the date of the trough, and the fall from that peak to that trough.`}
             />
           </div>
 
