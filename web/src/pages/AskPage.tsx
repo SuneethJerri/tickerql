@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, api, type QueryResponse, type StreamEvent, type Turn } from "../api";
+import { formatCell } from "../format";
 import { downloadCsv, type CsvCell } from "../csv";
 import { Markdown } from "../components/Markdown";
 import { tokenizeSql } from "../sqlHighlight";
@@ -340,11 +341,7 @@ function Answer({ result, events }: { result: QueryResponse; events: StreamEvent
                 <tr key={i}>
                   {row.map((cell, j) => (
                     <td key={j}>
-                      {cell == null
-                        ? "—"
-                        : typeof cell === "number"
-                          ? cell.toLocaleString("en", { maximumFractionDigits: 4 })
-                          : String(cell)}
+                      {formatCell(cell)}
                     </td>
                   ))}
                 </tr>
