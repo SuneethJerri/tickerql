@@ -24,6 +24,11 @@ import { setUrlParams, useUrlNumber, useUrlOptional } from "../urlState";
  * A sector cell is the MEAN of the pairwise correlations behind it, not a
  * correlation of sector indices - averaging the pairs answers "do these two
  * groups move together", which is the question the grid is being read for.
+ *
+ * That averaging used to happen here, over the full ticker matrix: 18,225
+ * cells and 1.66 MB fetched to draw 361 of them, about five seconds on the
+ * deployed instance. It happens in SQL now. The ticker matrix is still the
+ * right shape for the drill-down, but scoped to the two sectors on screen.
  */
 export function CorrelationPage({ theme }: { theme: ThemeName }) {
   const [windowDays, setWindow] = useUrlNumber(
@@ -49,65 +54,68 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
   const setPair = (a: string, b: string) => setUrlParams({ pa: a, pb: b }, "replace");
   const [rollingPref, setRolling] = useUrlNumber("rw", ROLLING_WINDOWS, 60, "replace");
 
-  const matrix = useQuery({
-    queryKey: ["correlation", windowDays],
-    queryFn: () => api.correlation(windowDays),
-  });
   const assets = useQuery({ queryKey: ["assets"], queryFn: api.assets });
 
-  const model = useMemo(() => {
-    if (!matrix.data) return null;
-    const sectorOf = new Map((assets.data ?? []).map((a) => [a.ticker, a.sector]));
-    const pairs = new Map(
-      matrix.data.cells.map((c) => [`${c.ticker_a}|${c.ticker_b}`, c]),
-    );
+  // The sector grid is aggregated in the database. It used to be built here,
+  // from the full 135 x 135 ticker matrix: 18,225 cells and 1.66 MB fetched to
+  // draw 361 of them, about five seconds on the deployed instance. The browser
+  // now receives the 361 it draws.
+  const sectors = useQuery({
+    queryKey: ["correlation-sectors", windowDays],
+    queryFn: () => api.correlationSectors(windowDays),
+  });
 
-    const sectors = [...new Set(matrix.data.tickers.map((t) => sectorOf.get(t) ?? "Unknown"))]
-      .sort();
-    const tickersBySector = new Map<string, string[]>();
-    for (const ticker of [...matrix.data.tickers].sort()) {
-      const sector = sectorOf.get(ticker) ?? "Unknown";
-      tickersBySector.set(sector, [...(tickersBySector.get(sector) ?? []), ticker]);
+  const tickersBySector = useMemo(() => {
+    const by = new Map<string, string[]>();
+    for (const a of [...(assets.data ?? [])].sort((x, y) => x.ticker.localeCompare(y.ticker))) {
+      by.set(a.sector, [...(by.get(a.sector) ?? []), a.ticker]);
     }
+    return by;
+  }, [assets.data]);
 
-    // Mean over distinct pairs. The diagonal of the ticker matrix is 1.0 by
-    // construction, so including a === b would pull every intra-sector cell
-    // toward 1 by an amount that depends only on how many assets the sector
-    // has - a pure artefact of sector size.
-    const sectorCells = new Map<string, HeatValue>();
-    for (const a of sectors) {
-      for (const b of sectors) {
-        let total = 0;
-        let count = 0;
-        for (const ta of tickersBySector.get(a) ?? []) {
-          for (const tb of tickersBySector.get(b) ?? []) {
-            if (ta === tb) continue;
-            const value = pairs.get(`${ta}|${tb}`)?.correlation;
-            if (value == null) continue;
-            total += value;
-            count += 1;
-          }
-        }
-        sectorCells.set(`${a}|${b}`, {
-          correlation: count ? total / count : null,
-          observations: count,
-        });
-      }
-    }
-
-    return { sectors, tickersBySector, pairs, sectorCells };
-  }, [matrix.data, assets.data]);
-
-  const drillLabels = useMemo(() => {
-    if (!model || !drillA || !drillB) return null;
-    const tickers = new Set([
-      ...(model.tickersBySector.get(drillA) ?? []),
-      ...(model.tickersBySector.get(drillB) ?? []),
+  // The ticker matrix is still the right shape for a drill-down, but only for
+  // the two sectors on screen - a `tickers=` subset of twenty names, not the
+  // whole universe. Fetched only while drilled in.
+  const drillTickers = useMemo(() => {
+    if (!drillA || !drillB) return null;
+    const set = new Set([
+      ...(tickersBySector.get(drillA) ?? []),
+      ...(tickersBySector.get(drillB) ?? []),
     ]);
-    // A hand-typed ?sa=Nonsense selects nothing; fall back to the sector matrix
-    // rather than rendering an empty grid.
-    return tickers.size ? [...tickers].sort() : null;
-  }, [model, drillA, drillB]);
+    return set.size ? [...set].sort() : null;
+  }, [tickersBySector, drillA, drillB]);
+
+  const drillMatrix = useQuery({
+    queryKey: ["correlation", windowDays, drillTickers],
+    queryFn: () => api.correlation(windowDays, drillTickers!),
+    enabled: Boolean(drillTickers),
+  });
+
+  const sectorCells = useMemo(() => {
+    const cells = new Map<string, HeatValue>();
+    for (const c of sectors.data?.cells ?? []) {
+      cells.set(`${c.sector_a}|${c.sector_b}`, {
+        correlation: c.correlation,
+        observations: c.pairs,
+      });
+    }
+    return cells;
+  }, [sectors.data]);
+
+  const drillPairs = useMemo(() => {
+    const pairs = new Map<string, HeatValue>();
+    for (const c of drillMatrix.data?.cells ?? []) {
+      pairs.set(`${c.ticker_a}|${c.ticker_b}`, {
+        correlation: c.correlation,
+        observations: c.observations,
+      });
+    }
+    return pairs;
+  }, [drillMatrix.data]);
+
+  // A hand-typed ?sa=Nonsense selects nothing; fall back to the sector matrix
+  // rather than rendering an empty grid.
+  const drillLabels = drillTickers;
 
   // A 30-day window over a 90-day span is thirty-odd points; a 90-day window
   // over the same span is one. Offer only the windows the span can carry, and
@@ -117,26 +125,32 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
     ? rollingPref
     : (rollingOptions[rollingOptions.length - 1]?.value ?? 30);
 
+  const sectorList = sectors.data?.sectors ?? [];
   const sectorCount = new Set((assets.data ?? []).map((a) => a.sector)).size;
-  const tickers = matrix.data?.tickers ?? [];
+  const tickers = useMemo(
+    () => [...(assets.data ?? [])].map((a) => a.ticker).sort(),
+    [assets.data],
+  );
   const known = (t: string | null) => (t && tickers.includes(t) ? t : null);
 
-  // The default pair is the most correlated distinct pair in the matrix, not
-  // the alphabetically first two. Taking tickers[0] and tickers[1] opened the
-  // card on AAPL and ABBV - two names with no relationship, whose series is a
-  // flat line at zero, which makes the chart look like it is not working.
-  // Reading it off the matrix that is already loaded costs one pass and no
-  // hardcoded tickers.
+  // The default pair is the most correlated distinct pair in the universe, not
+  // the alphabetically first two. Opening on tickers[0] and tickers[1] gave
+  // AAPL and ABBV, two names with no relationship, whose series is a flat line
+  // at zero and makes the chart look like it is not working.
+  //
+  // It used to be read off the full ticker matrix in the browser. Now that the
+  // browser no longer receives that matrix, each sector cell carries the
+  // strongest pair behind it and the global maximum falls out of 361 rows.
   const strongestPair = useMemo(() => {
     let best: { a: string; b: string; v: number } | null = null;
-    for (const c of matrix.data?.cells ?? []) {
-      if (c.ticker_a >= c.ticker_b || c.correlation == null) continue;
-      if (!best || c.correlation > best.v) {
-        best = { a: c.ticker_a, b: c.ticker_b, v: c.correlation };
+    for (const c of sectors.data?.cells ?? []) {
+      if (c.top_correlation == null || !c.top_ticker_a || !c.top_ticker_b) continue;
+      if (!best || c.top_correlation > best.v) {
+        best = { a: c.top_ticker_a, b: c.top_ticker_b, v: c.top_correlation };
       }
     }
     return best;
-  }, [matrix.data]);
+  }, [sectors.data]);
 
   const pairA = known(pinnedA) ?? strongestPair?.a ?? tickers[0] ?? null;
   const pairB = known(pinnedB) ?? strongestPair?.b ?? tickers[1] ?? null;
@@ -160,11 +174,11 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
   // The visible grid, long rather than wide: 361 sector cells or a ticker
   // block, one row per pair, which is the shape a spreadsheet can pivot.
   const exportPairs = () => {
-    if (!model) return;
-    const labels = drillLabels ?? model.sectors;
+    const labels = drillLabels ?? sectorList;
+    if (!labels.length) return;
     const at = drillLabels
-      ? (a: string, b: string) => model.pairs.get(`${a}|${b}`)
-      : (a: string, b: string) => model.sectorCells.get(`${a}|${b}`);
+      ? (a: string, b: string) => drillPairs.get(`${a}|${b}`)
+      : (a: string, b: string) => sectorCells.get(`${a}|${b}`);
     const rows = labels.flatMap((a) =>
       labels.map((b) => [a, b, at(a, b)?.correlation ?? null, at(a, b)?.observations ?? 0]),
     );
@@ -187,7 +201,11 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
             ← All sectors
           </button>
         )}
-        <button className="chip" onClick={exportPairs} disabled={!model}>
+        <button
+          className="chip"
+          onClick={exportPairs}
+          disabled={!(drillLabels ? drillPairs.size : sectorCells.size)}
+        >
           Download CSV
         </button>
       </div>
@@ -203,31 +221,33 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
         subtitle={
           drill && drillLabels
             ? "Every asset in the selected sectors, pair by pair. Click a cell to draw that pair's correlation over time below."
-            : "Each cell is the mean correlation across every asset pair spanning the two sectors, with self-pairs excluded. Click a cell to see the assets behind it. Cross-asset pairs use only the days both assets traded — crypto trades weekends and equities do not, so padding would drag every crypto/equity pair toward zero."
+            : "Each cell is the mean correlation across every asset pair spanning the two sectors, with self-pairs excluded, aggregated in the database rather than in the browser. Click a cell to see the assets behind it. Cross-asset pairs use only the days both assets traded, since crypto trades weekends and equities do not, and padding would drag every crypto/equity pair toward zero."
         }
       >
-        {matrix.isPending || assets.isPending ? (
+        {(drillLabels ? drillMatrix.isPending : sectors.isPending) || assets.isPending ? (
           // Square cells mean the grid's height is set by its width, not by
           // how many labels there are, so the count changes only how fine the
-          // mesh looks. It comes from the sector list when that has landed -
-          // `assets` is a much smaller request than the matrix and usually
-          // arrives first - and falls back to something that still reads as a
-          // matrix rather than as three dozen large blocks.
-          <HeatmapSkeleton count={Math.max(sectorCount, 16)} wide />
-        ) : matrix.error ? (
-          <ErrorNotice error={matrix.error} />
-        ) : !model ? null : drillLabels ? (
+          // mesh looks. It comes from the sector list when that has landed and
+          // otherwise falls back to something that still reads as a matrix
+          // rather than as three dozen large blocks.
+          <HeatmapSkeleton
+            count={drillLabels ? drillLabels.length : Math.max(sectorCount, 16)}
+            wide={!drillLabels}
+          />
+        ) : (drillLabels ? drillMatrix.error : sectors.error) ? (
+          <ErrorNotice error={(drillLabels ? drillMatrix.error : sectors.error)!} />
+        ) : drillLabels ? (
           <CorrelationHeatmap
             labels={drillLabels}
-            cellAt={(a, b) => model.pairs.get(`${a}|${b}`)}
+            cellAt={(a, b) => drillPairs.get(`${a}|${b}`)}
             theme={theme}
             unit="shared days"
             onSelect={setPair}
           />
         ) : (
           <CorrelationHeatmap
-            labels={model.sectors}
-            cellAt={(a, b) => model.sectorCells.get(`${a}|${b}`)}
+            labels={sectorList}
+            cellAt={(a, b) => sectorCells.get(`${a}|${b}`)}
             theme={theme}
             unit="pairs"
             onSelect={(a, b) => setDrill([a, b])}

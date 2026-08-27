@@ -84,6 +84,23 @@ export interface CorrelationCell {
   observations: number;
 }
 
+export interface SectorCorrelationCell {
+  sector_a: string;
+  sector_b: string;
+  correlation: number | null;
+  pairs: number;
+  /** The strongest single asset pair spanning the two sectors. */
+  top_ticker_a: string | null;
+  top_ticker_b: string | null;
+  top_correlation: number | null;
+}
+
+export interface SectorCorrelationMatrix {
+  window_days: number;
+  sectors: string[];
+  cells: SectorCorrelationCell[];
+}
+
 export interface RollingCorrelationPoint {
   date: string;
   correlation: number | null;
@@ -229,6 +246,10 @@ export const api = {
     request<CorrelationMatrix>(
       `/api/analytics/correlation?window=${window}` +
         (tickers?.length ? `&tickers=${tickers.join(",")}` : ""),
+    ),
+  correlationSectors: (window: number) =>
+    request<SectorCorrelationMatrix>(
+      `/api/analytics/correlation/sectors?window=${window}`,
     ),
   rollingCorrelation: (a: string, b: string, window: number, span: number) =>
     request<RollingCorrelation>(

@@ -117,6 +117,29 @@ class CorrelationMatrix(BaseModel):
     cells: list[CorrelationCell]
 
 
+class SectorCorrelationCell(BaseModel):
+    """One cell of the sector grid, plus the strongest pair inside it.
+
+    `top_*` costs nothing to produce - the pairwise correlations are already in
+    hand - and it means a caller that wants one interesting pair to plot does
+    not have to pull the whole 135x135 matrix to find it.
+    """
+
+    sector_a: str
+    sector_b: str
+    correlation: float | None
+    pairs: int
+    top_ticker_a: str | None
+    top_ticker_b: str | None
+    top_correlation: float | None
+
+
+class SectorCorrelationMatrix(BaseModel):
+    window_days: int
+    sectors: list[str]
+    cells: list[SectorCorrelationCell]
+
+
 class RollingCorrelationPoint(BaseModel):
     date: date
     correlation: float | None

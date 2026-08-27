@@ -130,7 +130,7 @@ uv pip install -e ./ingest -e ./api --no-deps
 .venv/bin/python -m ingest refresh-views
 .venv/bin/python -m ingest coverage          # 752 bars/equity, 1096/crypto
 
-.venv/bin/python -m pytest                   # 268 tests
+.venv/bin/python -m pytest                   # 277 tests
 
 .venv/bin/uvicorn app.main:app --reload      # :8000
 cd web && npm install && npm run dev         # :5173
@@ -258,7 +258,8 @@ Four conventions that are easy to get wrong:
 | `GET` | `/api/analytics/sector-performance` | return, volatility, return/risk per sector |
 | `GET` | `/api/analytics/sector-index` | equal-weighted cumulative index, rebased to 100 |
 | `GET` | `/api/analytics/volatility` | volatility ranking |
-| `GET` | `/api/analytics/correlation` | pairwise matrix; 18,225 cells for 135 assets |
+| `GET` | `/api/analytics/correlation` | pairwise ticker matrix; 18,225 cells for 135 assets, so pass `tickers=` unless you want all of them |
+| `GET` | `/api/analytics/correlation/sectors` | the 19x19 sector grid, averaged in SQL; 67 kB instead of 1.66 MB |
 | `GET` | `/api/analytics/rolling-correlation` | one pair's correlation as a series, trailing window on every date |
 | `GET` | `/api/analytics/periods` | best/worst days or months |
 | `GET` | `/api/analytics/moving-averages/{ticker}` | 20/50/200-day, with an `is_partial` flag during ramp-up |
@@ -419,17 +420,17 @@ scripts/  insights.py, which regenerates the README's numbers from the database.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest          # 268
+.venv/bin/python -m pytest          # 277
 cd web && npm test                  # 81
 ```
 
 | File | | Covers |
 |---|---:|---|
 | `test_guard.py` | 54 | AST validation, including data-modifying CTEs |
-| `test_api.py` | 45 | endpoint contracts and error paths |
+| `test_api.py` | 50 | endpoint contracts, cache headers and error paths |
 | `test_db_privileges.py` | 33 | the security boundary, adversarially |
 | `test_gateway_config.py` | 28 | base-URL and auth-style handling for non-Anthropic gateways |
-| `test_queries.py` | 27 | each analytics query against invariants: correlation symmetry, unit diagonal, moving-average ramp-up |
+| `test_queries.py` | 31 | each analytics query against invariants: correlation symmetry, unit diagonal, moving-average ramp-up |
 | `test_query_stream.py` | 19 | conversation-history bounds, SSE progress events, the streaming route |
 | `test_agent.py` | 18 | the agent loop against a fake Anthropic client |
 | `test_query_endpoint.py` | 16 | `/api/query` including the unconfigured 503 path |
@@ -443,6 +444,39 @@ The query tests recompute results independently in Python and compare, rather
 than asserting the shape of whatever the SQL happened to return. Several suites
 are also mutation-tested: a deliberate break is introduced and the run has to
 fail, since a passing test that cannot fail proves nothing.
+
+## Performance
+
+Three things were making the first load slow, measured against the deployed
+instance rather than guessed at.
+
+**The API sleeps.** It runs on Render's free plan, which suspends a service
+after 15 minutes of no traffic and takes about 50 seconds to start the next
+request. That wait lands on whoever opens the site first and no query tuning
+touches it, because the request has not reached the application yet.
+[`keep-warm.yml`](.github/workflows/keep-warm.yml) pings `/api/health` every 10
+minutes. 24/7 uptime is roughly 730 instance hours a month against the plan's
+750. This is a workaround for a plan limit, and the workflow can be deleted the
+day the service moves onto a paid instance.
+
+**The correlation page fetched 50x what it drew.** The sector grid is 361 cells
+and the browser was building it by averaging the full 135x135 ticker matrix:
+18,225 cells, 1.66 MB, about five seconds. That average now happens in SQL. The
+response is 67 kB. Splitting the old five seconds locally: 2.2s was the
+self-join, 0.02s was Pydantic, and the rest was encoding and shipping data the
+page discarded. The ticker matrix is still the right shape for the drill-down,
+where a `tickers=` subset covers two sectors rather than nineteen.
+
+**Nothing was cacheable.** The data changes once a night, so analytics
+responses now carry `Cache-Control: public, max-age=300,
+stale-while-revalidate=86400` and moving between tabs stops re-fetching
+everything. `/api/health` is excluded deliberately: its whole job is to report
+how stale the data is, and a cached staleness reading is worse than none.
+
+Compression was already on. Render's edge gzips responses, so the browser was
+receiving 262 kB rather than 1.66 MB even before any of this, which is why the
+fix had to be about generating and shipping less rather than squeezing it
+harder.
 
 ## Deployment
 

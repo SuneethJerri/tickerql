@@ -41,7 +41,7 @@ def test_all_queries_are_discoverable() -> None:
     expected = {
         "assets", "price_history", "sector_performance", "sector_index",
         "asset_risk_metrics", "correlation_matrix", "best_worst_periods",
-        "moving_averages", "rolling_correlation",
+        "moving_averages", "rolling_correlation", "correlation_sectors",
     }
     assert expected <= found, f"missing queries: {expected - found}"
 
@@ -221,6 +221,77 @@ def test_correlation_uses_only_common_trading_days(conn) -> None:
     assert cross_obs == aapl_obs, (
         "cross-asset correlation must use the intersection of trading days"
     )
+
+
+# ---------------------------------------------------------------------------
+# Sector correlation
+# ---------------------------------------------------------------------------
+
+def test_sector_correlation_matches_aggregating_the_ticker_matrix(conn, universe) -> None:
+    """The database now does what the browser used to.
+
+    This is the test that matters: it recomputes every sector cell from the full
+    ticker matrix the old client-side code consumed, and compares. If the SQL
+    aggregates over the wrong set - keeping self-pairs, counting one direction,
+    averaging nulls as zero - the numbers move and this catches it.
+    """
+    sector_rows = q(conn, "correlation_sectors", window_days=365)
+    ticker_rows = q(conn, "correlation_matrix", window_days=365, tickers=None)
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT ticker, sector FROM market.assets WHERE is_active")
+        sector_of = dict(cur.fetchall())
+
+    expected: dict[tuple[str, str], list[float]] = {}
+    for r in ticker_rows:
+        if r["ticker_a"] == r["ticker_b"] or r["correlation"] is None:
+            continue
+        key = (sector_of[r["ticker_a"]], sector_of[r["ticker_b"]])
+        expected.setdefault(key, []).append(r["correlation"])
+
+    assert len(sector_rows) == len(expected)
+    for row in sector_rows:
+        values = expected[(row["sector_a"], row["sector_b"])]
+        assert row["pairs"] == len(values), (row["sector_a"], row["sector_b"])
+        assert row["correlation"] == pytest.approx(fmean(values), abs=1e-9)
+
+
+def test_sector_correlation_is_a_full_symmetric_grid(conn, universe) -> None:
+    rows = q(conn, "correlation_sectors", window_days=365)
+    sectors = sorted({r["sector_a"] for r in rows})
+    assert len(sectors) == len(universe["sectors"])
+    assert len(rows) == len(universe["sectors"]) ** 2
+
+    grid = {(r["sector_a"], r["sector_b"]): r["correlation"] for r in rows}
+    for a in sectors:
+        for b in sectors:
+            assert grid[(a, b)] == pytest.approx(grid[(b, a)], abs=1e-9)
+
+
+def test_sector_diagonal_is_not_pinned_to_one(conn) -> None:
+    """Self-pairs are excluded, so an intra-sector cell is the mean correlation
+    between DIFFERENT assets in that sector. If the ticker diagonal leaked in,
+    every one of these would be dragged toward 1 by an amount that depends only
+    on how many assets the sector has."""
+    rows = q(conn, "correlation_sectors", window_days=365)
+    diagonal = [r["correlation"] for r in rows if r["sector_a"] == r["sector_b"]]
+    assert diagonal
+    assert all(v < 0.99 for v in diagonal), "a self-pair leaked into the diagonal"
+
+
+def test_sector_cells_carry_the_strongest_pair_behind_them(conn) -> None:
+    sector_rows = q(conn, "correlation_sectors", window_days=365)
+    ticker_rows = q(conn, "correlation_matrix", window_days=365, tickers=None)
+    by_pair = {(r["ticker_a"], r["ticker_b"]): r["correlation"] for r in ticker_rows}
+
+    for row in sector_rows:
+        a, b = row["top_ticker_a"], row["top_ticker_b"]
+        assert a is not None and b is not None
+        assert a != b, "the strongest pair must not be an asset with itself"
+        assert by_pair[(a, b)] == pytest.approx(row["top_correlation"], abs=1e-9)
+        assert row["top_correlation"] >= row["correlation"], (
+            "the strongest pair cannot be below the mean of the pairs it is in"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -509,6 +580,7 @@ def test_every_query_runs_under_the_readonly_api_role(env) -> None:
         "moving_averages": {"ticker": "AAPL", "windows": [20], "window_days": 90},
         "rolling_correlation": {"ticker_a": "AAPL", "ticker_b": "BTC",
                                 "rolling_days": 60, "span_days": 365},
+        "correlation_sectors": {"window_days": 365},
     }
     with psycopg.connect(api_url) as c:
         for name, params in cases.items():

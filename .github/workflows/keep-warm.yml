@@ -1,0 +1,54 @@
+# Keeps the Render service awake.
+#
+# The API runs on Render's free plan, which suspends a service after 15 minutes
+# with no requests and takes roughly 50 seconds to cold-start the next one. That
+# wait lands on whoever opens the site first, and no amount of query tuning
+# touches it: the request has not reached the application yet.
+#
+# A request every 10 minutes stays inside the 15-minute window with room for
+# GitHub's scheduler to lag, which it does. 24/7 uptime is about 730 instance
+# hours a month against the free plan's 750, so this does not overrun the quota.
+# Public repositories do not consume Actions minutes.
+#
+# This is a workaround for a plan limit, not a fix. A paid Render instance does
+# not sleep and this workflow can be deleted the day the service moves onto one.
+name: keep-warm
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: keep-warm
+  # A ping that is already running has nothing worth protecting, and the next
+  # one is 10 minutes away.
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Wake the API
+        # --max-time 90 rather than the default: a cold start is the case this
+        # exists for, so timing out at 30s would abandon exactly the request
+        # that was doing the work. Retries cover a suspended Neon compute
+        # behind it, which fails the health check rather than the connection.
+        run: |
+          code=$(curl -sS --max-time 90 --retry 3 --retry-delay 20 \
+                   -o /tmp/health.json -w '%{http_code}' \
+                   https://sqlproj-api.onrender.com/api/health) || true
+          echo "HTTP $code"
+          cat /tmp/health.json 2>/dev/null || true
+          echo
+          # A degraded body still means the service is awake, which is all this
+          # workflow is responsible for. Only a non-200 is a failure here.
+          if [ "$code" != "200" ]; then
+            echo "::error::Health check returned $code"
+            exit 1
+          fi

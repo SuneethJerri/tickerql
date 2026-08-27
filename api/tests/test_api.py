@@ -45,8 +45,34 @@ def test_openapi_documents_every_endpoint(client) -> None:
         "/api/analytics/moving-averages/{ticker}",
         "/api/analytics/sparklines",
         "/api/analytics/rolling-correlation",
+        "/api/analytics/correlation/sectors",
     }
     assert expected <= set(paths)
+
+
+def test_analytics_responses_are_cacheable(client) -> None:
+    """Moving between tabs should not re-fetch a 1.6 MB matrix at full cost."""
+    for path, params in [
+        ("/api/analytics/correlation", {"window": 365, "tickers": "AAPL,MSFT"}),
+        ("/api/assets", {}),
+        ("/api/prices/AAPL", {}),
+    ]:
+        r = client.get(path, params=params)
+        assert r.status_code == 200, path
+        assert "max-age" in r.headers.get("cache-control", ""), path
+
+
+def test_health_is_never_cached(client) -> None:
+    """Its whole job is to report how stale the data is, and a cached
+    staleness reading is worse than no reading."""
+    r = client.get("/api/health")
+    assert "max-age" not in r.headers.get("cache-control", "")
+
+
+def test_errors_are_not_cached(client) -> None:
+    r = client.get("/api/prices/FAKE")
+    assert r.status_code == 404
+    assert "max-age" not in r.headers.get("cache-control", "")
 
 
 def test_cors_is_restricted_to_configured_origins(client) -> None:
@@ -197,6 +223,23 @@ def test_correlation_unknown_ticker_is_404(client) -> None:
     r = client.get("/api/analytics/correlation", params={"tickers": "AAPL,FAKE"})
     assert r.status_code == 404
     assert "FAKE" in r.json()["detail"]
+
+
+def test_sector_correlation_is_the_grid_the_page_draws(client, universe) -> None:
+    body = client.get("/api/analytics/correlation/sectors", params={"window": 365}).json()
+    n = len(universe["sectors"])
+    assert body["sectors"] == sorted(universe["sectors"])
+    assert len(body["cells"]) == n * n
+
+
+def test_sector_correlation_is_far_smaller_than_the_ticker_matrix(client, universe) -> None:
+    """The reason this endpoint exists. The page drew 361 cells and fetched
+    18,225 to get them."""
+    sectors = client.get("/api/analytics/correlation/sectors", params={"window": 365})
+    tickers = client.get("/api/analytics/correlation", params={"window": 365})
+    assert len(sectors.content) * 10 < len(tickers.content), (
+        f"sector grid {len(sectors.content)}B vs ticker matrix {len(tickers.content)}B"
+    )
 
 
 # ---------------------------------------------------------------------------

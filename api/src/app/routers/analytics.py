@@ -27,6 +27,8 @@ from app.models import (
     PriceSeries,
     RollingCorrelation,
     RollingCorrelationPoint,
+    SectorCorrelationCell,
+    SectorCorrelationMatrix,
     SectorIndexPoint,
     SectorPerformanceOut,
     SparklineSeries,
@@ -232,6 +234,27 @@ def correlation(
     return CorrelationMatrix(
         window_days=window,
         tickers=sorted({c.ticker_a for c in cells}),
+        cells=cells,
+    )
+
+
+@router.get("/analytics/correlation/sectors", response_model=SectorCorrelationMatrix)
+def correlation_by_sector(window: WindowDays = 365) -> SectorCorrelationMatrix:
+    """The correlation grid the dashboard actually draws.
+
+    `/analytics/correlation` returns 18,225 cells for 135 assets, and the sector
+    view averaged them down to 361 in the browser - computing, serialising and
+    shipping fifty times more data than it drew. This does the averaging in the
+    database. The ticker matrix is still the right call for the drill-down,
+    where a `tickers=` subset keeps it small.
+    """
+    with api_connection() as conn:
+        rows = sql.fetch_all(conn, "correlation_sectors", {"window_days": window})
+
+    cells = [SectorCorrelationCell(**r) for r in rows]
+    return SectorCorrelationMatrix(
+        window_days=window,
+        sectors=sorted({c.sector_a for c in cells}),
         cells=cells,
     )
 
