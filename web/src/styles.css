@@ -773,6 +773,28 @@ table.data .swatch {
 
 /* ---------- answer ---------- */
 .answer { min-width: 0; }
+
+/* The conclusion, set apart from the evidence under it. A tint rather than a
+   border box: the answer sits inside an assistant bubble that is already a
+   container, and a second frame would read as a nested card. The accent rule
+   is on the reading edge, where the eye starts. */
+.answer-lede {
+  background: var(--surface-1);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-lg);
+  line-height: 1.6;
+}
+.answer-lede > :first-child { margin-top: 0; }
+.answer-lede > :last-child { margin-bottom: 0; }
+.answer-lede strong { color: var(--text-primary); }
+
+.result-chart { margin: var(--space-4) 0 0; }
+.chart-note {
+  font-size: var(--text-sm); margin: var(--space-1) 0 0;
+}
+
 .answer-meta {
   margin-top: var(--space-3); font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;

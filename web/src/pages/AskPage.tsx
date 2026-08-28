@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, type QueryResponse, type StreamEvent, type Turn } from "../api";
 import { formatCell } from "../format";
 import { downloadCsv, type CsvCell } from "../csv";
@@ -6,6 +6,9 @@ import { Markdown } from "../components/Markdown";
 import { tokenizeSql } from "../sqlHighlight";
 import { setUrlParams, useUrlOptional } from "../urlState";
 import { Card } from "../components/ui";
+import { planChart } from "../charts/autoChart";
+import { ResultChart } from "../charts/ResultChart";
+import type { ThemeName } from "../charts/palette";
 
 const SUGGESTIONS = [
   "Which sector had the highest volatility last year?",
@@ -29,11 +32,11 @@ interface Exchange {
   elapsedMs: number;
 }
 
-export function AskPage() {
+export function AskPage({ theme }: { theme: ThemeName }) {
   const [draft, setDraft] = useState("");
-  // A question handed over from another view by "Ask about this". Consumed
-  // once: it is copied into the draft and dropped from the URL, so a reload or
-  // a Back does not silently re-fill a box the reader has since cleared.
+  // A question handed over by "Ask about this". Consumed once: copied into the
+  // draft and dropped from the URL, so a reload does not re-fill a box the
+  // reader has since cleared.
   const handoff = useUrlOptional("q", 400);
   useEffect(() => {
     if (!handoff) return;
@@ -126,7 +129,7 @@ export function AskPage() {
       {exchanges.length > 0 && (
         <div className="transcript">
           {exchanges.map((exchange) => (
-            <ExchangeView key={exchange.id} exchange={exchange} />
+            <ExchangeView key={exchange.id} exchange={exchange} theme={theme} />
           ))}
           <div ref={transcriptEnd} />
         </div>
@@ -184,7 +187,7 @@ export function AskPage() {
   );
 }
 
-function ExchangeView({ exchange }: { exchange: Exchange }) {
+function ExchangeView({ exchange, theme }: { exchange: Exchange; theme: ThemeName }) {
   const running = !exchange.result && !exchange.error;
   return (
     <div className="exchange">
@@ -195,7 +198,7 @@ function ExchangeView({ exchange }: { exchange: Exchange }) {
         ) : exchange.error ? (
           <div className="notice error">{exchange.error}</div>
         ) : (
-          <Answer result={exchange.result!} events={exchange.events} />
+          <Answer result={exchange.result!} events={exchange.events} theme={theme} />
         )}
       </div>
     </div>
@@ -288,16 +291,33 @@ function describe(events: StreamEvent[]): string[] {
   return steps;
 }
 
-function Answer({ result, events }: { result: QueryResponse; events: StreamEvent[] }) {
+function Answer({
+  result, events, theme,
+}: {
+  result: QueryResponse;
+  events: StreamEvent[];
+  theme: ThemeName;
+}) {
   const blocked = result.attempts.filter((a) => !a.accepted);
   const shown = result.rows.slice(0, ROW_DISPLAY_CAP);
+  const plan = useMemo(
+    () => planChart(result.columns, result.rows),
+    [result.columns, result.rows],
+  );
 
   return (
     <div className="answer">
-      <Markdown text={result.answer} />
+      {/* The prose is the answer; the query, the chart and the table are the
+          evidence for it. It is marked as such rather than left as the first
+          of five equal-weight blocks. */}
+      <div className="answer-lede">
+        <Markdown text={result.answer} />
+      </div>
+
+      {plan && <ResultChart plan={plan} theme={theme} />}
 
       {/* Showing that the guard intervened is the point, not an implementation
-          detail to hide — it is the visible edge of the security boundary. */}
+          detail to hide: it is the visible edge of the security boundary. */}
       {blocked.length > 0 && (
         <div className="notice">
           <strong>

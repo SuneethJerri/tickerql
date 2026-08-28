@@ -122,7 +122,7 @@ export default function App() {
         {tab === "correlation" && <CorrelationPage theme={theme} />}
         {tab === "asset" && <AssetPage theme={theme} />}
         {tab === "compare" && <ComparePage theme={theme} />}
-        {tab === "ask" && <AskPage />}
+        {tab === "ask" && <AskPage theme={theme} />}
       </main>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
