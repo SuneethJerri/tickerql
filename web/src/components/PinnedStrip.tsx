@@ -7,14 +7,12 @@ import { setUrlParams } from "../urlState";
 
 /** The pinned watchlist, above everything else on the dashboard.
  *
- * It reuses the two queries the risk table already makes, under the same query
- * keys, so a pinned strip costs no extra request - react-query serves both from
- * cache. That is also why it takes the window: pinning is not a separate
- * timeframe, it is the same window the rest of the page is showing.
+ * It reuses the two queries the risk table already makes, under the same keys,
+ * so the strip costs no extra request. That is also why it takes the window:
+ * pinning is not a separate timeframe.
  *
- * Empty is not rendered at all. An empty-state panel saying "pin something"
- * would occupy the top of the page permanently for anyone who never pins, which
- * is most people; the affordance lives where the assets are instead.
+ * Empty renders nothing. An empty-state panel saying "pin something" would sit
+ * at the top of the page permanently for everyone who never pins.
  */
 export function PinnedStrip({
   pins, windowDays, theme,

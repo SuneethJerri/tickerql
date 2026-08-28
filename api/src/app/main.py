@@ -55,14 +55,10 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-API-Key"],
 )
 
-# Analytics responses are cacheable; the underlying data changes once a night
-# when the refresh workflow runs. Without this, moving between tabs re-fetched
-# everything at full cost - and the correlation matrix is the most expensive
-# response the API produces.
-#
-# Health is excluded on purpose: its entire job is to report how stale the data
-# is, and a cached staleness reading is worse than no reading. /api/query is a
-# POST and never reaches this.
+# The underlying data changes once a night, when the refresh workflow runs.
+# Health is excluded: its job is to report how stale the data is, and a cached
+# staleness reading is worse than no reading. /api/query is a POST and never
+# reaches this.
 _CACHEABLE_PREFIXES = ("/api/analytics/", "/api/assets", "/api/prices/")
 _CACHE_CONTROL = "public, max-age=300, stale-while-revalidate=86400"
 

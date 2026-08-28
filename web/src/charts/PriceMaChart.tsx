@@ -27,10 +27,9 @@ export function PriceMaChart({ series, theme }: { series: MovingAverageSeries; t
   }
   const rows = [...byDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
-  // Explicit month-start ticks. Letting recharts pick by pixel gap and then
-  // truncating the label to YYYY-MM printed the same month twice whenever two
-  // chosen ticks fell inside it - visible as "2025-10 ... 2025-10" once the
-  // card went full width and the axis had room for more ticks.
+  // Explicit month-start ticks. Picking by pixel gap and then truncating the
+  // label to YYYY-MM prints the same month twice whenever two chosen ticks fall
+  // inside it.
   const monthTicks: string[] = [];
   let lastMonth = "";
   for (const row of rows) {

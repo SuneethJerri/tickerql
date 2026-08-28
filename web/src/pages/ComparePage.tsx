@@ -25,10 +25,9 @@ import { downloadCsv, type CsvCell } from "../csv";
  * that `sectorColor`-style fallback would start reusing hues, and two series in
  * the same colour is worse than a series you cannot add.
  *
- * The series come from the sparkline endpoint - one request for all 135 assets,
- * already in cache from the risk table - rather than N calls to /api/prices.
- * Weekly closes are the right resolution for a shape comparison, and the daily
- * detail nobody reads at this size would cost 135x the payload.
+ * The series come from the sparkline endpoint - one request for all 135
+ * assets, already in cache from the risk table - rather than N calls to
+ * /api/prices. Weekly closes are the right resolution for a shape comparison.
  */
 export function ComparePage({ theme }: { theme: ThemeName }) {
   const [windowDays, setWindow] = useUrlNumber("window", METRIC_WINDOWS, 365, "replace");

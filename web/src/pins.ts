@@ -1,14 +1,12 @@
 /** Pinned assets - a small watchlist that survives both a reload and a link.
  *
- * The URL is the source of truth, not localStorage. A watchlist that lives only
- * in a browser cannot be sent to anyone, and this whole app is built so that a
- * view is a link: the tab, the window, the drill-down and the selected asset
- * are all already in the address bar. A pinned set is the same kind of state.
+ * The URL is the source of truth, not localStorage: a watchlist that lives only
+ * in a browser cannot be sent to anyone, and every other piece of view state is
+ * already in the address bar.
  *
- * localStorage is the fallback, and only for a first visit with no `pins` in
- * the URL - it restores what you had last time. Once a link carries pins, the
- * link wins, because someone who opens a shared watchlist expects to see that
- * watchlist and not their own.
+ * localStorage is the fallback, and only on a first visit with no `pins` in the
+ * URL. Once a link carries pins the link wins, because someone opening a shared
+ * watchlist expects to see that watchlist and not their own.
  */
 
 import { useCallback } from "react";

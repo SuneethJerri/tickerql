@@ -22,9 +22,7 @@ from app.agent.prompt import system_blocks
 
 log = logging.getLogger(__name__)
 
-# A progress callback. The loop already passes through every boundary worth
-# reporting; before this the caller could only see the total elapsed time and
-# infer the rest by subtraction.
+# A progress callback, fired at every boundary in the loop worth reporting.
 ProgressEvent = dict[str, Any]
 Progress = Callable[[ProgressEvent], None]
 
@@ -86,10 +84,8 @@ class ModelCallFailed(RuntimeError):
 
     Carries the status so the router can tell a rejected credential - a
     configuration problem only an operator can fix - from a gateway hiccup the
-    caller can usefully retry. Every one of them used to surface as the same
-    502, "The language model call failed.", which is why a revoked key took a
-    dive through the deploy logs to identify rather than being legible from the
-    response.
+    caller can usefully retry. Collapsed into one 502 they are indistinguishable
+    from the response, and a revoked key means a dive through the deploy logs.
     """
 
     def __init__(self, status: int) -> None:
@@ -228,11 +224,9 @@ class SqlAgent:
         try:
             return self._client.create(**kwargs)
         except Exception as exc:  # noqa: BLE001
-            # The client is a narrow Protocol so a test double can stand in for
-            # it, which means this module must not import one SDK's exception
-            # classes. Every HTTP client in this space hangs the upstream
-            # status on the exception, so that is what is duck-typed; anything
-            # without one propagates unchanged and still becomes a 502.
+            # The client is a narrow Protocol, so this module must not import
+            # one SDK's exception classes. The upstream status is duck-typed off
+            # the exception; anything without one propagates and becomes a 502.
             status = getattr(exc, "status_code", None)
             if isinstance(status, int):
                 raise ModelCallFailed(status) from exc
@@ -365,12 +359,10 @@ class SqlAgent:
             if not tool_uses:
                 answer_text = "\n".join(t.strip() for t in text_parts if t.strip())
 
-                # Neither a tool call nor any text. Seen in the wild against a
-                # gateway-hosted Llama: one call returned an empty content list
-                # and the loop returned "the model returned no answer text",
-                # having spent a paid call and two remaining ones it never used.
-                # An empty turn carries no information to feed back, so the
-                # question is simply put again.
+                # Neither a tool call nor any text - some gateways return an
+                # empty content list. An empty turn carries nothing to feed
+                # back, so the question is simply put again rather than
+                # abandoning the remaining calls.
                 if not answer_text and calls < MAX_MODEL_CALLS:
                     emit({"phase": "retrying", "reason": "empty response"})
                     messages.append({

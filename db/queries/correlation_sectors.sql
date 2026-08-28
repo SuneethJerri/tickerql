@@ -1,10 +1,9 @@
 -- correlation_sectors.sql — the correlation heatmap, aggregated where the data is.
 -- Params: window_days
 --
--- The frontend draws a 19x19 sector grid. It used to get there by fetching the
--- full 135x135 ticker matrix - 18,225 cells, 1.66 MB, about five seconds on the
--- deployed instance - and averaging it down to 361 cells in the browser. Every
--- one of those cells was computed, serialised, shipped and then discarded.
+-- The frontend draws a 19x19 sector grid. Aggregating here rather than in the
+-- browser is the difference between shipping 361 cells and shipping the full
+-- 135x135 ticker matrix - 18,225 cells and 1.66 MB - to average it down.
 --
 -- A sector cell is the MEAN of the pairwise correlations spanning the two
 -- sectors, not a correlation of sector indices: averaging the pairs answers
@@ -45,11 +44,10 @@ pairwise AS (
 --
 -- On nulls. `corr()` returns NULL only when one side has zero variance, which
 -- no pair in this universe does, so a `WHERE correlation IS NOT NULL` filter
--- here is unreachable and no test can tell it apart from its absence. Rather
--- than ship a gate that cannot be exercised, the null handling is written into
--- the aggregates: `avg` and `count(correlation)` skip nulls natively, and the
--- `NULLS LAST` is load-bearing because Postgres sorts NULLS FIRST under DESC
--- and would otherwise name a zero-variance pair as the strongest one.
+-- here would be unreachable and untestable. The handling lives in the
+-- aggregates instead: `avg` and `count(correlation)` skip nulls natively, and
+-- the `NULLS LAST` is load-bearing, because Postgres sorts NULLS FIRST under
+-- DESC and would otherwise name a zero-variance pair as the strongest.
 SELECT
     sector_a,
     sector_b,

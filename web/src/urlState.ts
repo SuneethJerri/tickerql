@@ -1,17 +1,12 @@
 import { useCallback, useSyncExternalStore } from "react";
 
-/** View state in the URL instead of in `useState`.
- *
- * Every view was unshareable and the back button did nothing: tab, window,
- * selected asset and the correlation drill-down all lived in component state,
- * so the address bar never changed. Putting them in query params fixes both at
- * once, and it is what lets the screenshot harness point at a view by URL
- * rather than clicking a nav button by its label.
+/** View state in the URL instead of in `useState`, so a view is a link and the
+ *  back button works. It is also what lets the screenshot harness point at a
+ *  view by URL rather than clicking a nav button by its label.
  *
  * `useSyncExternalStore` rather than a context: the store is the address bar,
- * which already exists and is already global. The snapshot is the search
- * string - a primitive, so React compares it by value and a write that changes
- * nothing re-renders nothing.
+ * which is already global. The snapshot is the search string - a primitive, so
+ * a write that changes nothing re-renders nothing.
  */
 
 const listeners = new Set<() => void>();

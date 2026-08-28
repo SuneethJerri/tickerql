@@ -6,16 +6,10 @@ import { baselineScale } from "./scale";
 
 /** Sector comparison as small multiples, one panel per sector.
  *
- * This was one multi-line chart driven by a five-name SECTOR_ORDER constant.
- * The universe now has 19 sectors and that constant matched three of them -
- * the other 16 were dropped with no error, so the dashboard was quietly showing
- * a sixth of the data.
- *
- * Nineteen lines on one axis is not the fix. The adjacent-pairlist ceiling is
+ * Nineteen lines on one axis is not an option: the adjacent-pairlist ceiling is
  * eight hues, and past it sectorColor() returns null rather than reusing one.
- * Small multiples have no colour cap at all: identity comes from the panel
- * label, comparison from a shared y-domain, and every panel uses the same hue
- * because colour here encodes nothing.
+ * Small multiples have no colour cap - identity comes from the panel label and
+ * comparison from a shared y-domain, so every panel uses the same hue.
  */
 export function SectorIndexChart({
   data,
@@ -49,11 +43,10 @@ export function SectorIndexChart({
     })
     .sort((a, b) => b.final - a.final);
 
-  // One y-domain across every panel. Per-panel autoscaling would draw a 2%
-  // sector and a 60% sector with the same amplitude, which is the standard way
-  // small multiples mislead. Snapping it outward to a round step also keeps the
-  // extremes off the frame - at 84px tall an exact [min, max] clips half the
-  // stroke on whichever sector owns the high or the low.
+  // One y-domain across every panel: per-panel autoscaling draws a 2% sector
+  // and a 60% sector with the same amplitude. Snapping outward to a round step
+  // also keeps the extremes off the frame - at 84px tall an exact [min, max]
+  // clips half the stroke on whichever sector owns the high or the low.
   const { domain } = baselineScale(
     panels.flatMap((panel) => panel.series.map((point) => point.value)),
   );
@@ -68,11 +61,10 @@ export function SectorIndexChart({
           <figure
             className={`sm-panel${onSelect ? " selectable" : ""}`}
             key={panel.sector}
-            // A figure rather than a button wrapping everything: the tooltip
-            // inside needs pointer events, and nesting interactive content in a
-            // button is invalid. The caption carries the control instead, so
-            // keyboard users get one tab stop per sector rather than one per
-            // chart element.
+            // A figure, not a button wrapping everything: the tooltip inside
+            // needs pointer events, and nesting interactive content in a button
+            // is invalid. The caption carries the control, so keyboard users get
+            // one tab stop per sector.
             onClick={onSelect ? () => onSelect(panel.sector) : undefined}
           >
             <figcaption>
@@ -148,14 +140,9 @@ export function SectorIndexChart({
 }
 
 
-/** The small-multiples grid with nothing in it.
- *
- * The default 280px block stood in for nineteen 84px panels laid out in a
- * responsive grid, so the page grew by roughly seven hundred pixels the moment
- * the data arrived. This is the same `.small-multiples` container and the same
- * panel markup, so the columns break at the same widths and the height is
- * right at all of them.
- */
+/** The small-multiples grid with nothing in it. The same `.small-multiples`
+ *  container and panel markup, so the columns break at the same widths and the
+ *  height is right at all of them; a fixed block is right at none of them. */
 export function SectorPanelsSkeleton({ count }: { count: number }) {
   return (
     <div className="small-multiples" role="status" aria-label="Loading">

@@ -1,10 +1,6 @@
-/** CSV export, one implementation.
- *
- * Every table on the dashboard is a view of numbers someone will eventually
- * want in a spreadsheet, and the alternative to a helper is four subtly
- * different escapers - the usual outcome being one of them that forgets quotes
- * and silently corrupts any sector name containing a comma.
- */
+/** CSV export, one implementation. Four call sites means four subtly different
+ *  escapers otherwise, one of which forgets quotes and corrupts every sector
+ *  name containing a comma. */
 
 export type CsvCell = string | number | null | undefined;
 

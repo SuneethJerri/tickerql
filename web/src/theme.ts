@@ -1,38 +1,28 @@
-/** Themes and accents - the single source of truth for both.
+/** Themes and accents - the single source of truth for both, keyed on one
+ *  `ThemeName` that chart code uses directly.
  *
- * There used to be two independent `Mode` unions, one here and one in
- * charts/palette.ts, that typechecked against each other by accident. There is
- * now one `ThemeName`, and chart code keys on it directly.
- *
- * Every surface below was run through the dataviz validator against its OWN
- * categorical set in charts/palette.ts, adjacent and all-pairs, before being
- * added. Adding a theme here is therefore not enough on its own: run
- * web/scripts/build_palettes.mjs, which reads this table, searches that
- * surface for a set that clears every gate, and prints the block to paste into
- * charts/palette.ts. A theme with no set of its own will not compile.
+ * Adding a theme here is not enough on its own. Every surface carries its own
+ * categorical set in charts/palette.ts, validated adjacent and all-pairs
+ * against that surface. Run web/scripts/build_palettes.mjs, which reads this
+ * table, searches the surface for a set that clears every gate and prints the
+ * block to paste. A theme with no set of its own will not compile.
  */
 
 export const THEME_NAMES = ["light", "dark", "midnight", "graphite", "sepia"] as const;
 export type ThemeName = (typeof THEME_NAMES)[number];
 
-/** Four inks, not four brand colours.
+/** Four inks, not four brand colours: data owns the hues, chrome wears ink.
  *
- * The previous set was blue/purple/green/orange, and its blue was `#2a78d6` -
- * OKLab dE 0.0 from categorical slot one. The accent WAS the chart's blue, so a
- * button and a data series were the same colour and the page had no way to say
- * which saturated things carry meaning. These four were picked by an OKLCH
- * sweep against three gates, all measured: WCAG >= 3.0 against every surface in
- * their base (actual 5.15-11.35), WCAG >= 4.5 against their own ink (6.59-11.35),
- * and OKLab dE >= 15 from EVERY categorical hue in their base (15.0-20.2).
- * Data owns the hues; chrome wears ink. */
+ * Picked by an OKLCH sweep against three gates - WCAG >= 3.0 against every
+ * surface in their base, WCAG >= 4.5 against their own ink, and OKLab dE >= 15
+ * from every categorical hue in their base. Without that last one a button and
+ * a data series come out the same colour. */
 export const ACCENT_NAMES = ["teal", "plum", "ochre", "oxblood"] as const;
 export type AccentName = (typeof ACCENT_NAMES)[number];
 
 /** Which band of the validator a surface is measured in - OKLCH L 0.43-0.77
- *  for a light ground, 0.48-0.67 for a dark one. This is no longer what picks
- *  a theme's colours (every theme has its own set now); it is the one fact
- *  about a surface the palette generator cannot infer, and it lives here so
- *  there is one copy of it rather than one here and one in the script. */
+ *  for a light ground, 0.48-0.67 for a dark one. The one fact about a surface
+ *  the palette generator cannot infer, kept here so there is only one copy. */
 export type ChartBase = "light" | "dark";
 
 export interface Theme {
@@ -55,10 +45,9 @@ export const THEMES: Record<ThemeName, Theme> = {
   sepia:    { label: "Sepia",    chartBase: "light", colorScheme: "light", surface: "#fbf6e9", panel: "#ece1c8" },
 };
 
-/** The hexes are here as well as in styles.css because the palette generator
- *  has to keep every series colour away from them, and it cannot read CSS.
- *  `check_palettes.mjs` parses styles.css and fails if the two ever disagree,
- *  so this is a second copy that cannot drift silently. */
+/** Duplicated from styles.css because the palette generator has to keep every
+ *  series colour away from these and cannot read CSS. `check_palettes.mjs`
+ *  parses styles.css and fails if the two disagree. */
 export const ACCENTS: Record<AccentName, { label: string; hex: Record<ChartBase, string> }> = {
   teal:    { label: "Teal",    hex: { light: "#016869", dark: "#7fd3ce" } },
   plum:    { label: "Plum",    hex: { light: "#8a1e6e", dark: "#dda8fe" } },

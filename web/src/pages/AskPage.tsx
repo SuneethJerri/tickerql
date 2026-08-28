@@ -392,15 +392,10 @@ function Answer({
   );
 }
 
-/** The query, always visible.
- *
- * It used to live in a <details>. That framed the one thing this product
- * promises - that an answer can be checked against the query behind it - as an
- * optional disclosure, and an audit trail nobody opens is decoration. The
- * gutter carries the guard's verdict for the same reason: a security boundary
- * that only becomes visible when it fails is invisible exactly when someone
- * wants to be reassured by it.
- */
+/** The query, always visible rather than behind a <details>: an audit trail
+ *  nobody opens is decoration. The gutter carries the guard's verdict for the
+ *  same reason - a boundary only visible on failure is invisible exactly when
+ *  someone wants to be reassured by it. */
 function SqlBlock({ sql, blocked }: { sql: string; blocked: boolean }) {
   const [copied, setCopied] = useState(false);
   const tokens = tokenizeSql(sql);

@@ -14,10 +14,9 @@ import { divergingColor, inkOn, type ThemeName } from "./palette";
  * table that happens to be coloured, and the grid gives exact 2px surface gaps
  * and real text nodes for screen readers.
  *
- * Generic over its labels rather than hardcoding tickers, because the page now
- * shows a sector matrix by default and drills down to tickers. Column headers
- * are set vertically: at 135 tickers the horizontal ones overprinted each other
- * into "CMCSADISGOOGLMETA".
+ * Generic over its labels: the page shows a sector matrix by default and
+ * drills down to tickers. Column headers are set vertically, because at 135
+ * tickers horizontal ones overprint each other into "CMCSADISGOOGLMETA".
  */
 export interface HeatValue {
   correlation: number | null;
@@ -44,13 +43,9 @@ export function CorrelationHeatmap({
   return (
     <div>
       <div
-        // The label column's width is a class, not an inline value. It was
-        // briefly an inline custom property, on the theory that a stylesheet
-        // cannot override an inline property but can redefine a variable -
-        // which is wrong: an inline custom property declaration beats a
-        // stylesheet rule on the same element just as any other does, so the
-        // narrow-viewport override silently did nothing. A class leaves both
-        // widths in CSS where the breakpoint can reach them.
+        // A class, not an inline custom property: an inline declaration beats
+        // a stylesheet rule even for a variable, so the narrow-viewport
+        // override could not reach it.
         className={`heatmap${wide ? " wide" : ""}`}
         style={{
           gridTemplateColumns: `var(--heat-label) repeat(${labels.length}, minmax(26px, 1fr))`,
@@ -77,9 +72,8 @@ export function CorrelationHeatmap({
       </div>
 
       <div className="scale-legend">
-        {/* The poles are painted from divergingColor, not described in prose.
-            The sentence that used to sit here said "Blue = ... red = ..." and
-            would have silently lied the moment the scale was rethemed. */}
+        {/* Painted from divergingColor rather than described in prose: a
+            "blue means..." sentence lies the moment the scale is rethemed. */}
         {[
           { t: -1, label: "moves oppositely" },
           { t: 0, label: "unrelated" },
@@ -157,19 +151,14 @@ function Row({
 
 /** The heatmap's own geometry, with nothing in it.
  *
- * A fixed-height block cannot stand in for this. The cells are
- * `aspect-ratio: 1`, so the grid's height is a function of the viewport width
- * and the number of labels - a constant is wrong at every width but one, and
- * the 420px it used to reserve was about a thousand pixels short at 1440,
- * which threw the card below it down the page the moment the matrix landed.
- * Rendering the real grid with empty cells is right at every width.
+ * A fixed-height block cannot stand in for this: the cells are
+ * `aspect-ratio: 1`, so the grid's height is a function of viewport width and
+ * label count, and any constant is wrong at every width but one. Rendering the
+ * real grid with empty cells is right at all of them. Only the column-header
+ * band is approximated, because its height comes from vertical text.
  *
- * Only the column-header band is approximated: its height comes from vertical
- * text, and this has none.
- *
- * The cells do not shimmer. Three hundred and sixty-one animated gradients is
- * a lot of movement to put on a page that is still loading, and the label
- * ghosts already say the view is waiting.
+ * The cells do not shimmer - 361 animated gradients is a lot of movement on a
+ * page that is still loading, and the label ghosts already say it is waiting.
  */
 export function HeatmapSkeleton({ count, wide = false }: { count: number; wide?: boolean }) {
   const slots = Array.from({ length: count }, (_, i) => i);

@@ -1,14 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { downloadCsv, type CsvCell } from "../csv";
 
-/** One column, defined once and used twice.
- *
- * `value` is the exported value AND the default rendering, so the CSV cannot
- * drift from the table. The previous shape took pre-rendered ReactNode rows,
- * which meant an export would have had to either re-derive the numbers from a
- * second map over the same data, or serialise React elements - the first
- * duplicates, the second produces "[object Object]".
- */
+/** One column, defined once and used twice: `value` is both the exported value
+ *  and the default rendering, so the CSV cannot drift from the table. */
 export interface Column<T> {
   header: string;
   value: (row: T) => CsvCell;
@@ -18,16 +12,8 @@ export interface Column<T> {
   align?: "left";
 }
 
-/** Collapsible table beneath a chart.
- *
- * This started as a contrast relief: three of the old light-mode categorical
- * slots sat below 3:1 against the surface, and the validator's WARN obliges
- * relief - visible labels or a table view. The per-theme palettes cleared that,
- * and every slot in every theme now passes 3:1 on its own surface, so nothing
- * requires this any more. It stays because the other reason it was here has not
- * changed: it is the honest fallback for anyone who cannot use the chart at
- * all, and the export lives on it.
- */
+/** Collapsible table beneath a chart: the fallback for anyone who cannot use
+ *  the chart at all, and where the CSV export lives. */
 export function TableView<T>({
   columns,
   data,

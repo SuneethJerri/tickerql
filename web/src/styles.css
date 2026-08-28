@@ -8,13 +8,12 @@
  * - and CHROME WEARS INK, so every accent is provably far from every series
  * colour and a button can never be mistaken for a line.
  *
- * Surfaces were validated against the chart series palette before being added -
- * checked with web/scripts/validate_palette.js. Chart SERIES colours are not here;
- * they live in charts/palette.ts, one validated set per theme.
+ * Surfaces are validated against the chart series palette before being added,
+ * with web/scripts/validate_palette.js. Chart SERIES colours are not here; they
+ * live in charts/palette.ts, one validated set per theme.
  *
- * The dark block used to be duplicated between the media query and the
- * [data-theme] scope, and had already drifted on --good/--critical. The media
- * query now only maps the OS preference onto the dark theme's values.
+ * The prefers-color-scheme block only maps the OS preference onto the dark
+ * theme's values, so there is one copy of them rather than two that drift.
  */
 
 :root,
@@ -25,11 +24,9 @@
    * is. --surface-1 is also the chart surface and was validated against the
    * categorical set on both pairlists before being used here.
    *
-   * --text-muted is #5f6c7c rather than the #6b7a8c this palette was drawn
-   * with, because #6b7a8c measured 4.16:1 against the card - under the 4.5:1
-   * body-text floor. The same check caught the OLD light theme failing at 4.44
-   * and sepia at 4.12, so this was a standing defect in every light-base theme
-   * and not something the new palette introduced. */
+   * --text-muted is #5f6c7c, not the #6b7a8c this palette was drawn with:
+   * #6b7a8c measures 4.16:1 against the card, under the 4.5:1 body-text
+   * floor. Every light-base theme needed the same correction. */
   --surface-0: #e9edf2;
   --surface-1: #f7f9fb;
   --surface-2: #dee4ec;
@@ -128,12 +125,12 @@
  * without a second copy of the hexes; --accent just aliases the chosen one.
  *
  * --accent-ink is the text that sits ON the accent. It follows the base, not
- * which hue is picked, which is why .btn no longer hardcodes #fff.
+ * which hue is picked, which is why .btn cannot hardcode #fff.
  *
- * The previous shape set --accent inside the prefers-color-scheme block, at
- * the same specificity as [data-accent] but later in the file - so a system-dark
- * reader who picked purple silently got blue. var() resolves at use time, so
- * aliasing avoids the whole class of ordering bug. */
+ * --accent is an alias rather than a value set per scope. Setting it inside the
+ * prefers-color-scheme block puts it at the same specificity as [data-accent]
+ * but later in the file, so a system-dark reader who picks purple gets blue.
+ * var() resolves at use time, which avoids the whole class of ordering bug. */
 :root {
   --hue-teal: #016869;
   --hue-plum: #8a1e6e;
@@ -185,7 +182,7 @@
   }
 }
 
-/* Scales. Each replaced a pile of raw literals scattered through the file. */
+/* Scales. */
 :root {
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
   --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
@@ -260,9 +257,8 @@ body {
   color: var(--text-secondary); font: inherit; font-weight: 500;
 }
 .nav button:hover { color: var(--text-primary); }
-/* An underline in the accent, not a filled pill. The pill was a grey lozenge
- * that said "selected" in the same voice as every other grey thing on the page;
- * a rule under the word is how a tab is marked, and it carries the accent. */
+/* An underline in the accent, not a filled pill: a rule under the word is how
+ * a tab is marked, and it is the accent's job on this row. */
 .nav button[aria-current="page"] {
   background: none; color: var(--text-primary); font-weight: 600;
   box-shadow: inset 0 -2px 0 var(--accent);
@@ -304,16 +300,9 @@ body {
 .grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); }
 
 /* ---------- ruled sections ---------- */
-/* These were bordered, rounded, shadowed cards - which is the answer every
- * dashboard template gives, and it left the page speaking two languages: the
- * masthead and readout above worked by RULES, everything below them by BOXES.
- * A ledger does not put a box around each column of figures; it rules them off.
- *
- * So the box is gone and the section is bounded by a hairline with a short
- * accent tab at its left, the way a ruled sheet is tabbed. That also gives the
- * accent a job on every view - it previously appeared on the Ask button, links
- * and the focus ring, which meant that on the dashboard, risk and correlation
- * views the accent picker changed nothing anyone could see. */
+/* Bounded by a hairline with a short accent tab at its left, not by a box. A
+ * ledger does not put a box around each column of figures; it rules them off,
+ * and the masthead and readout above already work that way. */
 .card {
   background: none;
   border: none;
@@ -467,9 +456,8 @@ body {
   font-variant-numeric: tabular-nums;
 }
 .masthead .meta > span { white-space: nowrap; }
-/* The separator hangs off the END of the fact before it, not the start of the
-   fact after. Attached to the following item it wraps with it, and a line that
-   begins with a lone "·" is how the first version of this looked on a phone. */
+/* The separator hangs off the END of the fact before it. Attached to the
+   following item it wraps with it, leaving a line that opens with a lone "·". */
 .masthead .meta > span:not(:last-child)::after {
   content: "·"; margin-left: var(--space-3); color: var(--border-strong);
 }
@@ -809,10 +797,8 @@ details.steps summary {
 .chip.copy { padding: 1px var(--space-2); font-size: var(--text-xs); }
 
 /* ---------- SQL as artifact ---------- */
-/* The one promise this product makes is that an answer can be audited against
- * the query behind it, so the query is not a disclosure widget to be tucked
- * into a <details>. It is the thing the page is built around, and it is always
- * visible on an answer. */
+/* The query is always visible on an answer, not tucked into a <details>: an
+ * audit trail nobody opens is decoration. */
 .sql-artifact { margin-top: var(--space-4); }
 .sql-artifact .sql-head {
   display: flex; align-items: center; gap: var(--space-3);
@@ -832,10 +818,9 @@ details.steps summary {
   color: var(--border-strong); letter-spacing: 0;
 }
 .sql-artifact .sql-head .chip.copy { margin-left: auto; letter-spacing: 0; }
-/* The gutter is the security boundary made permanent. Green when the guard
- * accepted the statement, red when it blocked one - so the boundary is a
- * visible property of every answer rather than a notice that only appears on
- * failure, which is the one time nobody is reassured by it. */
+/* The gutter carries the guard's verdict on every answer - green accepted, red
+ * blocked - rather than appearing only on failure, which is the one time nobody
+ * is reassured by it. */
 pre.sql-text {
   font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7;
   background: var(--surface-2);
@@ -854,13 +839,10 @@ pre.sql-text[data-guard="blocked"] { border-left-color: var(--critical); }
 .sql-text .lit { color: var(--sql-lit); }
 .sql-text .id  { color: var(--sql-id); }
 .sql-text .cm  { color: var(--text-muted); font-style: italic; }
-/* Syntax colours for the generated SQL: the theme's own hues, pushed to
-   text contrast (>= 4.5:1) against --surface-2, which is what the artifact
-   sits on. Generated by web/scripts/build_palettes.mjs alongside the chart
-   palette and re-measured from THIS file by check_palettes.mjs - do not
-   hand-edit. What was here before was a copy of the old categorical slots
-   at chart contrast, which came out at 2.20:1 on Light: coloured from the
-   chart palette, as claimed, and unreadable. */
+/* The theme's own hues, pushed to text contrast (>= 4.5:1) against
+   --surface-2, which is what the artifact sits on - chart contrast is 3:1 and
+   comes out unreadable here. Generated by web/scripts/build_palettes.mjs and
+   re-measured from THIS file by check_palettes.mjs; do not hand-edit. */
 :root { --sql-kw: #2f5bb3; --sql-lit: #516f11; --sql-id: #a44173; }
 :root[data-theme="dark"] { --sql-kw: #ce6b89; --sql-lit: #23aa99; --sql-id: #b1921e; }
 :root[data-theme="midnight"] { --sql-kw: #857fd8; --sql-lit: #cc813c; --sql-id: #23a8a9; }
@@ -901,8 +883,8 @@ pre.sql-text[data-guard="blocked"] { border-left-color: var(--critical); }
   background: var(--surface-2); border-radius: var(--radius-sm);
   padding: var(--space-3) var(--space-4); font-size: var(--text-sm);
 }
-/* Stacked children inside a notice used to carry inline marginTop props in
-   three different files, drifting between 4 and 8px. */
+/* One rule for stacked children, rather than inline marginTop in three
+   different files. */
 .notice > * + * { margin-top: var(--space-1); }
 .notice > .hint { margin-top: var(--space-2); }
 .notice ul { margin: var(--space-1) 0 0; padding-left: var(--space-5); }
@@ -923,8 +905,8 @@ pre.sql-text[data-guard="blocked"] { border-left-color: var(--critical); }
 .ghost-row { display: block; width: 72%; height: 9px; border-radius: 2px; }
 .ghost-cell { background: var(--surface-2); }
 .ghost-caption { display: block; width: 60%; height: 9px; border-radius: 2px; }
-/* Motion. Charts keep isAnimationActive={false} - that was a deliberate call,
-   and animating a data mark is not the same thing as animating a control. */
+/* Controls only. Charts keep isAnimationActive={false}: animating a data mark
+   is not the same thing as animating a control. */
 .nav button, .chip, .btn, .segmented button, select, .table-toggle {
   transition: background var(--dur-fast) var(--ease),
               color var(--dur-fast) var(--ease),
@@ -1023,11 +1005,9 @@ pre.sql-text[data-guard="blocked"] { border-left-color: var(--critical); }
 }
 
 /* ---------- narrow viewports ---------- */
-/* Every screenshot this app had was taken at 1440px, so none of this was
-   exercised until the phone pass. Two things were broken rather than merely
-   cramped: the topbar ran off the right edge, taking the last two tabs and the
-   theme picker with it and offering no way to reach them; and the heatmap put
-   twelve of its nineteen columns past the edge. */
+/* Two things break rather than merely cramp at phone width: the topbar runs
+   off the right edge, taking the last two tabs and the theme picker with it,
+   and the heatmap puts twelve of its nineteen columns past the edge. */
 
 @media (max-width: 860px) {
   .content { padding: var(--space-4); }

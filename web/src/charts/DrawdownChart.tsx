@@ -12,15 +12,12 @@ export interface DrawdownPoint {
 
 /** How far below its own running peak an asset is, day by day.
  *
- * One series, so no legend - the card title names it. It is deliberately NOT
- * drawn in the critical red: status colours are reserved for state (good,
- * warning, critical) and a drawdown series is a magnitude, not an alert. It
- * wears the same emphasis hue as the price chart above it, which also makes
- * the two read as one asset rather than two subjects.
+ * Not drawn in the critical red: status colours are reserved for state, and a
+ * drawdown is a magnitude, not an alert. It wears the same emphasis hue as the
+ * price chart above it so the two read as one asset.
  *
- * The area hangs from zero downward, which is the whole point of the form: the
- * eye reads depth and duration at once, and duration is the part a max-drawdown
- * number cannot tell you.
+ * The area hangs from zero downward so the eye reads depth and duration at
+ * once. Duration is the part a max-drawdown number cannot tell you.
  */
 export function DrawdownChart({
   points, theme,
@@ -31,21 +28,16 @@ export function DrawdownChart({
   const { primary } = emphasisColors(theme);
   const worst = points.reduce((low, p) => Math.min(low, p.drawdown), 0);
 
-  // Explicit ticks on a round step. Left to recharts the domain divided into
-  // quarters and produced 0 / -7 / -11 / -15, which reads as an axis with a
-  // mistake in it.
+  // Explicit ticks on a round step: left to Recharts the domain divides into
+  // quarters and comes out 0 / -7 / -11 / -15.
   const depth = Math.max(5, Math.ceil(Math.abs(worst) * 100 / 5) * 5);
   const step = depth <= 20 ? 5 : depth <= 60 ? 10 : 20;
   const ticks: number[] = [];
   for (let value = 0; value >= -depth; value -= step) ticks.push(value / 100);
 
-  // A hair of headroom above zero, for two reasons that share one cause: with
-  // the domain ending exactly at 0 the series sat flush against the plot's top
-  // edge. Recharts then culled the 0% tick, because its label would overhang
-  // that edge - so the axis read -5% / -10% / -15% and never named the one
-  // value the whole chart is measured from. And the peak line and the panel
-  // border became the same pixel, so "at its high-water mark" looked like
-  // "no data here".
+  // A hair of headroom above zero. Ending the domain exactly at 0 puts the
+  // series flush against the plot edge, which makes Recharts cull the 0% tick
+  // (its label would overhang) and merges the peak line into the panel border.
   const headroom = depth * 0.05;
 
   const monthTicks: string[] = [];

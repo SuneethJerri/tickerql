@@ -15,20 +15,14 @@ import { setUrlParams, useUrlNumber, useUrlOptional } from "../urlState";
 
 /** Correlation, sector-first.
  *
- * A ticker matrix is 135 x 135 = 18,225 cells and roughly 3,500 px tall. That
- * is not a chart; the column headers alone overprinted into one illegible run.
- * The sector matrix is 19 x 19 = 361 cells, fits on a screen, and shows the
- * block structure the chart exists for. Clicking a cell drills into the assets
- * behind it, which is where the ticker detail still belongs.
+ * A ticker matrix is 135 x 135 = 18,225 cells and ~3,500 px tall. The sector
+ * matrix is 19 x 19 = 361, fits on a screen, and shows the block structure the
+ * chart exists for; a cell drills into the assets behind it.
  *
  * A sector cell is the MEAN of the pairwise correlations behind it, not a
- * correlation of sector indices - averaging the pairs answers "do these two
- * groups move together", which is the question the grid is being read for.
- *
- * That averaging used to happen here, over the full ticker matrix: 18,225
- * cells and 1.66 MB fetched to draw 361 of them, about five seconds on the
- * deployed instance. It happens in SQL now. The ticker matrix is still the
- * right shape for the drill-down, but scoped to the two sectors on screen.
+ * correlation of sector indices: averaging the pairs answers "do these two
+ * groups move together", which is what the grid is read for. The averaging
+ * happens in SQL, so the browser receives the 361 cells it draws.
  */
 export function CorrelationPage({ theme }: { theme: ThemeName }) {
   const [windowDays, setWindow] = useUrlNumber(
@@ -56,10 +50,6 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
 
   const assets = useQuery({ queryKey: ["assets"], queryFn: api.assets });
 
-  // The sector grid is aggregated in the database. It used to be built here,
-  // from the full 135 x 135 ticker matrix: 18,225 cells and 1.66 MB fetched to
-  // draw 361 of them, about five seconds on the deployed instance. The browser
-  // now receives the 361 it draws.
   const sectors = useQuery({
     queryKey: ["correlation-sectors", windowDays],
     queryFn: () => api.correlationSectors(windowDays),
@@ -133,14 +123,10 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
   );
   const known = (t: string | null) => (t && tickers.includes(t) ? t : null);
 
-  // The default pair is the most correlated distinct pair in the universe, not
-  // the alphabetically first two. Opening on tickers[0] and tickers[1] gave
-  // AAPL and ABBV, two names with no relationship, whose series is a flat line
-  // at zero and makes the chart look like it is not working.
-  //
-  // It used to be read off the full ticker matrix in the browser. Now that the
-  // browser no longer receives that matrix, each sector cell carries the
-  // strongest pair behind it and the global maximum falls out of 361 rows.
+  // The most correlated distinct pair in the universe, not the alphabetically
+  // first two: tickers[0] and tickers[1] gave AAPL and ABBV, a flat line at
+  // zero that makes the chart look broken. Each sector cell carries the
+  // strongest pair behind it, so the global maximum falls out of 361 rows.
   const strongestPair = useMemo(() => {
     let best: { a: string; b: string; v: number } | null = null;
     for (const c of sectors.data?.cells ?? []) {
@@ -225,11 +211,9 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
         }
       >
         {(drillLabels ? drillMatrix.isPending : sectors.isPending) || assets.isPending ? (
-          // Square cells mean the grid's height is set by its width, not by
-          // how many labels there are, so the count changes only how fine the
-          // mesh looks. It comes from the sector list when that has landed and
-          // otherwise falls back to something that still reads as a matrix
-          // rather than as three dozen large blocks.
+          // Square cells put the grid's height on its width, so the count only
+          // changes how fine the mesh looks. The fallback keeps it reading as a
+          // matrix rather than as three dozen large blocks.
           <HeatmapSkeleton
             count={drillLabels ? drillLabels.length : Math.max(sectorCount, 16)}
             wide={!drillLabels}

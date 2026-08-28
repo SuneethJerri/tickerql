@@ -1,22 +1,18 @@
 /** Y-axis domains for charts read against a baseline.
  *
- * Recharts' default numeric domain starts at 0. That is right for a bar chart
- * and wrong for anything rebased to 100: a set of series that runs 94-118
- * gets drawn in the top fifth of the plot with four fifths of empty space
- * below, and every difference between the series is compressed to nothing.
- * The dashboard's small multiples already computed their own domain for this
- * reason; the sector and compare charts did not, and shipped anchored at zero.
+ * Recharts' default numeric domain starts at 0, which is right for a bar chart
+ * and wrong for anything rebased to 100: a series running 94-118 draws in the
+ * top fifth of the plot and every difference between the series is compressed
+ * to nothing.
  *
- * Two things this has to get right beyond "don't start at zero":
+ * Two constraints beyond "don't start at zero":
  *
- * 1. The baseline must stay inside the domain. Both charts draw a ReferenceLine
- *    at 100, and a domain of [104, 130] would silently drop the one gridline
- *    the chart is read against - the reader would see a rising line with no
- *    indication that all of it is above the start.
- * 2. The ticks have to be round numbers. Handing Recharts an arbitrary
- *    [93.7, 121.4] gets labels at 93.7, 100.6, 107.6 - technically correct and
- *    unreadable. So the domain is snapped outward to a nice step and the ticks
- *    are handed over explicitly rather than left to be inferred.
+ * 1. The baseline stays inside the domain. The charts draw a ReferenceLine at
+ *    100, and a domain of [104, 130] drops the one gridline they are read
+ *    against.
+ * 2. The ticks are round. An arbitrary [93.7, 121.4] is labelled 93.7, 100.6,
+ *    107.6 - correct and unreadable. The domain is snapped outward to a nice
+ *    step and the ticks handed over rather than inferred.
  */
 
 /** A domain and matching ticks for values read against `anchor`. */
@@ -32,15 +28,14 @@ export function baselineScale(
     if (v < low) low = v;
     if (v > high) high = v;
   }
-  // No finite data at all - a loading frame, or a window with no bars. Give a
-  // symmetric window around the anchor so the ReferenceLine still lands mid
-  // plot instead of the axis collapsing to [0, 0].
+  // No finite data - a loading frame, or a window with no bars. A symmetric
+  // window keeps the ReferenceLine mid-plot instead of collapsing to [0, 0].
   if (!Number.isFinite(low)) return { domain: [anchor - 10, anchor + 10], ticks: [] };
 
   low = Math.min(low, anchor);
   high = Math.max(high, anchor);
   // A dead-flat series - one bar in the window, or a stablecoin - has zero
-  // span, and every derived step would be zero with it.
+  // span, and every step derived from it would be zero too.
   if (high - low < 1e-9) {
     low -= 1;
     high += 1;
@@ -61,17 +56,14 @@ export function baselineScale(
 
 /** A y-domain for a correlation series.
  *
- * Correlation is bounded at -1 and 1, which tempts a fixed [-1, 1] axis - and
- * that was the first attempt. It hides the finding: a pair whose trailing
- * correlation ran from 0.04 to 0.34 (more than tripling) drew as a flat line
- * occupying a seventh of the panel. Autoscaling to the data is the opposite
- * failure: a pair that never leaves 0.38-0.42 fills the panel with noise and
- * reads as violent movement.
+ * Neither of the two obvious axes works. Pinned to [-1, 1], a pair whose
+ * correlation tripled from 0.04 to 0.34 draws as a flat line in a seventh of
+ * the panel. Autoscaled, a pair that never leaves 0.38-0.42 fills the panel
+ * and reads as violent movement.
  *
- * So: snap to quarter steps, always keep zero in view because zero is where
- * the pair stops moving together and starts moving apart, and never show less
- * than half the full scale. Under that floor a flat pair still looks flat and
- * a moving pair still looks like it moves.
+ * So: quarter steps, zero always in view because zero is where the pair stops
+ * moving together and starts moving apart, and never less than half the full
+ * scale. Under that floor a flat pair looks flat and a moving pair moves.
  */
 export function correlationScale(
   values: Iterable<number>, minSpan = 1, step = 0.25,
@@ -92,10 +84,7 @@ export function correlationScale(
   //
   // Bounded rather than a bare `while`: widening from the narrowest domain to
   // the whole scale takes 2/step steps, so anything past that is a bug, and
-  // the bound turns it into a wrong chart instead of a hung tab. Found by a
-  // mutation that seeded `low` from the data with no empty-input guard - the
-  // test suite did not fail, it hung, and stayed hung for every later run
-  // until the file was restored.
+  // the bound turns it into a wrong chart instead of a hung tab.
   const maxSteps = Math.ceil(2 / step) + 2;
   for (
     let i = 0;

@@ -14,16 +14,11 @@ import { usePins } from "../pins";
 import { setUrlParams, useUrlNumber, useUrlOptional } from "../urlState";
 import { downloadCsv, type CsvCell } from "../csv";
 
-/** One sector, and the assets inside it.
+/** One sector, and the assets inside it: the dashboard's small multiples say
+ *  which sectors moved, this says which assets moved them.
  *
- * The dashboard's small multiples answer "which sectors moved"; the obvious
- * next question is "which assets moved them", and until now the only way to ask
- * it was the correlation heatmap's cell drill-down, which is a strange place to
- * find it. A sector panel is now a link to this.
- *
- * Every figure here comes from queries the rest of the app already makes, under
- * the same keys - sector-index, risk-return, sparklines - so arriving here
- * costs no request that has not already been paid for.
+ * Every figure comes from queries the rest of the app already makes, under the
+ * same keys, so arriving here costs no new request.
  */
 export function SectorPage({ theme }: { theme: ThemeName }) {
   const [windowDays, setWindow] = useUrlNumber("window", METRIC_WINDOWS, 365, "replace");

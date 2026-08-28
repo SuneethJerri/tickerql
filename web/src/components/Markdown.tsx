@@ -2,17 +2,12 @@ import { Fragment, type ReactNode } from "react";
 
 /** A small markdown renderer for model answers.
  *
- * The model replies in markdown - tables above all, since most answers here are
- * a ranked list of assets - and the old Ask page put that straight into a <p>,
- * so a table arrived as a wall of pipe characters.
- *
- * Written here rather than pulled in: react-markdown plus remark-gfm is around
- * 100 kB for six constructs, on a bundle already over the Vite warning. What
- * the model actually emits is headings, paragraphs, bullet and ordered lists,
- * fenced code, tables, and inline bold/italic/code. That is this file.
+ * Written here rather than pulled in: react-markdown plus remark-gfm is ~100 kB
+ * for the six constructs the model actually emits - headings, paragraphs,
+ * lists, fenced code, tables, and inline bold/italic/code.
  *
  * It builds React elements and never touches dangerouslySetInnerHTML, so model
- * output cannot inject markup no matter what it returns.
+ * output cannot inject markup whatever it returns.
  */
 export function Markdown({ text }: { text: string }) {
   return <div className="md">{renderBlocks(text)}</div>;

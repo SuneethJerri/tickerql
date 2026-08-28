@@ -11,8 +11,8 @@ import {
 const THEME_KEY = "theme";
 const ACCENT_KEY = "accent";
 
-/** `null` means follow the OS. The previous version had no way back to this
- *  once a theme was chosen. */
+/** `null` means follow the OS, which stays reachable after a theme is
+ *  chosen. */
 export type ThemeChoice = ThemeName | null;
 
 function readStored<T>(key: string, guard: (v: unknown) => v is T): T | null {

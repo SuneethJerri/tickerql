@@ -48,8 +48,7 @@ export function Dashboard({ theme }: { theme: ThemeName }) {
 
   return (
     <>
-      {/* The one hero moment. Everything else on the page is quiet, which is
-          what lets this be loud without the page shouting throughout. */}
+      {/* The one hero moment; everything else on the page is quiet. */}
       <header className="masthead">
         <h1>tickerql</h1>
         {/* Each fact is its own non-breaking span, separator included, so a
@@ -181,9 +180,9 @@ function SectorTable({
   rows: SectorPerformance[];
   windowDays: number;
 }) {
-  // Ranked by return rather than by a fixed sector order. The swatch is gone
-  // with it: the panels above all wear one hue, so a coloured dot here would
-  // claim a sector-to-colour mapping that no longer exists.
+  // Ranked by return, not by a fixed sector order. No swatch: the panels above
+  // all wear one hue, so a coloured dot would claim a mapping that does not
+  // exist.
   const ordered = [...rows].sort(
     (a, b) => (b.total_return ?? -Infinity) - (a.total_return ?? -Infinity),
   );

@@ -189,8 +189,8 @@ def render_markdown(d: dict) -> str:
             f"{_pct(el['total_return'])} and still lands in the second group."
         )
 
-    # Sectors ranked by return per unit of risk. The full 19-row list used to be
-    # inlined as prose, which was unreadable; the ends are what carry the point.
+    # Sectors ranked by return per unit of risk. Only the ends are named - all
+    # nineteen inlined as prose is unreadable.
     by_ratio = sorted(
         d["perf"].values(), key=lambda r: r["return_per_unit_risk"] or -99, reverse=True
     )

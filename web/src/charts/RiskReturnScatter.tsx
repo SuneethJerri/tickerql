@@ -10,14 +10,10 @@ import { Legend, TooltipCard } from "./ChartTooltip";
 /** Evenly spaced ticks inside a domain.
  *
  * Recharts, handed an explicit domain, pins both endpoints and rounds only the
- * interior. On a [-120, 230] return domain that produced 230 / 60 / -30 / -120
- * - three gaps of 90 and one of 170, which reads as an axis with a mistake in
- * it rather than as a scale. DrawdownChart already worked around this with
- * explicit ticks; the scatter did not, and its domain moves with the window so
- * the defect appears and disappears with the data.
- *
- * The endpoints are deliberately not forced into the tick list: they are
- * padding, not readings, and labelling them is what forced the uneven gap.
+ * interior: on [-120, 230] that gives 230 / 60 / -30 / -120, three gaps of 90
+ * and one of 170. The endpoints are left out of the tick list on purpose -
+ * they are padding, not readings, and labelling them is what forces the
+ * uneven gap.
  */
 function evenTicks([lo, hi]: [number, number], intervals = 4): number[] {
   const raw = (hi - lo) / intervals;
@@ -42,10 +38,9 @@ function evenTicks([lo, hi]: [number, number], intervals = 4): number[] {
  * Hue therefore carries the one split that matters most in this data, equities
  * vs crypto, and identity comes from labels.
  *
- * At 16 assets every point was labelled. At 135 that printed one solid block of
- * overlapping text in the middle of the plot - the labels stopped being
- * identity and became noise. Only the extremes are labelled now: the corners a
- * reader actually asks about. Everything else is hover plus the table.
+ * Only the extremes are labelled. At 135 assets labelling every point prints
+ * one solid block of overlapping text through the middle of the plot.
+ * Everything else is hover plus the table.
  */
 export function RiskReturnScatter({ data, theme }: { data: RiskMetric[]; theme: ThemeName }) {
   const usable = data.filter(
@@ -65,9 +60,8 @@ export function RiskReturnScatter({ data, theme }: { data: RiskMetric[]; theme: 
     ratio: d.return_per_unit_risk,
   });
 
-  // Pad the domains rather than letting Recharts fit tight to the data: a point
-  // sitting on the top edge has its label clipped, and a label that will not fit
-  // must not be silently cut off.
+  // Padded rather than fitted tight to the data: a point on the top edge has
+  // its label clipped.
   const xs = usable.map((d) => (d.annualized_volatility ?? 0) * 100);
   const ys = usable.map((d) => (d.annualized_return ?? 0) * 100);
   // Round out to a multiple of 10 so the axis lands on readable ticks rather
@@ -88,10 +82,9 @@ export function RiskReturnScatter({ data, theme }: { data: RiskMetric[]; theme: 
   const xTicks = evenTicks(xDomain);
   const yTicks = evenTicks(yDomain);
 
-  // The points worth naming: best and worst return per unit of risk, the
-  // calmest and the wildest, and the single best and worst return. Six
-  // questions, at most six labels, chosen from the data rather than by index
-  // so the set moves when the window does.
+  // Best and worst return per unit of risk, calmest and wildest, best and
+  // worst return. Chosen from the data rather than by index, so the set moves
+  // when the window does.
   const labelled = new Set<string>();
   const extremesOf = (
     key: (d: RiskMetric) => number | null | undefined,
@@ -127,13 +120,10 @@ export function RiskReturnScatter({ data, theme }: { data: RiskMetric[]; theme: 
           <YAxis
             type="number" dataKey="y" name="Annualised return" domain={yDomain}
             tick={{ fontSize: 11, fill: "var(--text-muted)" }} tickLine={false}
-            // Wide enough for the rotated axis title AND the tick text beside
-            // it. At width 52 / offset 12 the two overlapped: the ticks are
-            // right-aligned to the axis, so they run back from x=52 to about
-            // x=18, while the rotated title sits centred on x=12 and is ~14px
-            // wide once turned. "200%" was printed straight through the "A" of
-            // "Annualised". Rule of thumb: width > offset + tick text width + a
-            // gap, which the 64/6 below clears by 17px.
+            // Wide enough for the rotated title AND the tick text beside it.
+            // Ticks are right-aligned to the axis and run back from `width`;
+            // the title sits centred on `offset` and is ~14px wide once turned.
+            // width > offset + tick text width + a gap.
             axisLine={false} width={64} unit="%" ticks={yTicks}
             label={{ value: "Annualised return", angle: -90, position: "insideLeft",
                      offset: 6, fontSize: 11.5, fill: "var(--text-secondary)" }}
@@ -176,11 +166,9 @@ export function RiskReturnScatter({ data, theme }: { data: RiskMetric[]; theme: 
               <LabelList
                 dataKey="label" position="top" offset={7}
                 fontSize={10.5} fontWeight={600} fill="var(--text-primary)"
-                // A halo in the surface colour. The labelled points are the
-                // extremes, but "calmest" and "worst return per unit of risk"
-                // can still land inside the crowded middle, where the bare
-                // text was drawn straight over its own mark and its
-                // neighbours'. Stroke first, fill over it.
+                // A halo in the surface colour, stroke first and fill over it.
+                // "Calmest" and "worst return per unit of risk" are extremes
+                // that still land in the crowded middle of the plot.
                 stroke="var(--surface-1)" strokeWidth={3}
                 style={{ paintOrder: "stroke" }}
               />

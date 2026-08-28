@@ -1,9 +1,5 @@
-/** Typed client for the analytics API.
- *
- * Types mirror api/src/app/models.py. They are hand-written rather than
- * generated: the surface is small and stable, and a generation step would be
- * one more thing to keep running. If the API's models change, these change.
- */
+/** Typed client for the analytics API. The types mirror
+ *  api/src/app/models.py by hand; if those change, these change. */
 
 const BASE = import.meta.env.VITE_API_BASE ?? "";
 
@@ -271,14 +267,11 @@ export const api = {
 
 /** POST /api/query/stream, reported event by event.
  *
- * EventSource cannot do this: it is GET-only and cannot send a body, and the
- * question plus its history is a body. So the SSE framing is parsed by hand off
- * the fetch body reader - which is about fifteen lines and avoids inventing a
- * GET route that takes a conversation in the query string.
+ * EventSource is GET-only and cannot send a body, and the question plus its
+ * history is a body, so the SSE framing is parsed by hand off the fetch reader.
  *
- * Errors arrive two ways and both are mapped to ApiError, so a caller never has
- * to care which: as a status code before the stream opens (401, 429, 422, 503),
- * and as a terminal `error` event once it has (the model call failed, mid-way).
+ * Errors arrive two ways and both map to ApiError: a status code before the
+ * stream opens, and a terminal `error` event once it has.
  */
 async function queryStream(
   question: string,

@@ -1,12 +1,7 @@
 import type { Asset } from "./api";
 
-/** Everything the palette can take you to.
- *
- * The universe is 135 assets across 19 sectors behind a `<select>`, which is
- * the wrong control for that many things: you cannot type at it, and finding
- * NVDA means scrolling past a hundred rows you did not want. This is the
- * control for a list that size.
- */
+/** Everything the palette can take you to: 135 assets, 19 sectors and every
+ *  view, in a control you can type at. */
 export interface Command {
   /** Stable identity, unique across kinds - a sector and a ticker can collide
    *  on text but never on this. */
@@ -55,11 +50,9 @@ export function buildCommands(assets: readonly Asset[]): Command[] {
 /**
  * Rank commands against what has been typed.
  *
- * Deliberately not fuzzy subsequence matching. "AAPL" matching "Bank of
- * America Corporation" through scattered letters is the behaviour that makes
- * fuzzy finders feel arbitrary, and with 135 tickers of 2-5 characters it fires
- * constantly. This ranks by WHERE the match is instead, which is the thing that
- * actually predicts intent:
+ * Not fuzzy subsequence matching: "AAPL" matching "Bank of America Corporation"
+ * through scattered letters fires constantly across 135 tickers of 2-5
+ * characters. This ranks by WHERE the match is, which predicts intent:
  *
  *   an exact label            NVDA -> NVDA
  *   a label prefix            NV   -> NVDA
@@ -72,9 +65,8 @@ export function buildCommands(assets: readonly Asset[]): Command[] {
 export function rankCommands(commands: readonly Command[], query: string, limit = 12): Command[] {
   const q = query.trim().toLowerCase();
   if (!q) {
-    // An empty box offers the views. Offering 135 assets in source order is
-    // offering nothing - the first screenful would be whatever the API
-    // happened to return first.
+    // An empty box offers the views. 135 assets in source order would make the
+    // first screenful whatever the API happened to return first.
     return commands.filter((c) => c.kind === "view").slice(0, limit);
   }
 

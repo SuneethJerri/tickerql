@@ -2,14 +2,13 @@ import { emphasisColors, type ThemeName } from "./palette";
 
 /** A price shape, inline in a table row.
  *
- * Hand-rolled SVG rather than a Recharts ResponsiveContainer: there is one of
- * these per row, and 135 ResponsiveContainers each running a resize observer
- * makes the table janky to scroll for a mark that is a polyline.
+ * Hand-rolled SVG rather than a Recharts ResponsiveContainer: 135 of those,
+ * each running a resize observer, makes the table janky to scroll for a mark
+ * that is a polyline.
  *
- * Small multiples again, so the colour rule is the same as the sector panels:
- * one hue for every row, because colour is encoding nothing here - the row
- * says which asset it is. A baseline marks the first close, so a shape that
- * ends above where it started is readable as such without an axis.
+ * One hue for every row - colour encodes nothing here, the row says which asset
+ * it is. A baseline marks the first close, so a shape that ends above where it
+ * started reads as such without an axis.
  */
 export function Sparkline({
   closes, theme, width = 96, height = 24,

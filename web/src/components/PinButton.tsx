@@ -3,14 +3,9 @@ import { MAX_PINS } from "../pins";
 
 /** Pin control.
  *
- * A toggle, not a menu item: pinning is one bit and the affordance should be
- * one click wherever an asset is named. The label is the action - "Pin" /
- * "Unpin" - rather than a state word like "Pinned", because a control names
- * what it does when you press it, and the pressed state is already carried by
- * aria-pressed and the fill.
- *
- * At the cap it becomes disabled rather than disappearing, and says why. A
- * control that silently stops working reads as a bug.
+ * The label is the action - "Pin" / "Unpin" - not the state, because a control
+ * names what it does when pressed; the state is carried by aria-pressed and the
+ * fill. At the cap it disables and says why rather than disappearing.
  */
 export function PinButton({
   ticker, pins, compact = false,
