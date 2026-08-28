@@ -22,6 +22,22 @@
 -- would leave the first `rolling_days` observations of that span without a
 -- full frame; running over everything and trimming afterwards means the first
 -- plotted point is as well-founded as the last.
+--
+-- Each point carries a 95 per cent interval from the Fisher z-transform: z = atanh(r)
+-- is approximately normal with standard error 1/sqrt(n-3), so the interval is
+-- tanh(z +/- 1.96/sqrt(n-3)). Doing it in z space rather than around r is what
+-- makes the interval asymmetric near the bounds, which is correct - there is
+-- more room below 0.9 than above it.
+--
+-- THE INTERVAL IS A FLOOR ON THE UNCERTAINTY, NOT A MEASUREMENT OF IT. Fisher
+-- assumes bivariate normal, independent observations. Daily returns are
+-- fat-tailed and volatility-clustered, so the true interval is wider than this
+-- one. It is honest about order of magnitude and about which differences are
+-- too small to read; it is not a p-value.
+--
+-- atanh(+/-1) is +/-inf, and tanh brings it back to +/-1, so a pair with itself
+-- gets a zero-width interval at 1.0 rather than an error. n <= 3 has no
+-- interval at all and returns NULL rather than the NaN sqrt(negative) gives.
 WITH bounds AS (
     SELECT max(date) AS as_of FROM market.daily_returns
 ),
@@ -52,13 +68,28 @@ rolled AS (
         ORDER BY date
         ROWS BETWEEN (%(rolling_days)s::int - 1) PRECEDING AND CURRENT ROW
     )
+),
+banded AS (
+    SELECT
+        rolled.date,
+        rolled.correlation,
+        rolled.observations,
+        atanh(rolled.correlation) AS z,
+        -- 1.959964 is the 97.5th percentile of the standard normal.
+        CASE
+            WHEN rolled.observations > 3
+            THEN 1.959964 / sqrt((rolled.observations - 3)::double precision)
+        END AS half_width
+    FROM rolled
+    CROSS JOIN bounds
+    WHERE rolled.observations = %(rolling_days)s::int
+      AND rolled.date > bounds.as_of - make_interval(days => %(span_days)s)
 )
 SELECT
-    rolled.date,
-    rolled.correlation,
-    rolled.observations
-FROM rolled
-CROSS JOIN bounds
-WHERE rolled.observations = %(rolling_days)s::int
-  AND rolled.date > bounds.as_of - make_interval(days => %(span_days)s)
-ORDER BY rolled.date;
+    date,
+    correlation,
+    observations,
+    tanh(z - half_width) AS ci_low,
+    tanh(z + half_width) AS ci_high
+FROM banded
+ORDER BY date;

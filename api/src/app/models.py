@@ -141,9 +141,21 @@ class SectorCorrelationMatrix(BaseModel):
 
 
 class RollingCorrelationPoint(BaseModel):
+    """One trailing window, with the uncertainty on its estimate.
+
+    `ci_low`/`ci_high` are the 95 per cent Fisher z interval for `correlation`
+    given `observations` shared trading days. They are asymmetric around the
+    estimate by construction, and a floor on the real uncertainty rather than a
+    measurement of it: Fisher assumes bivariate normal, independent returns,
+    and daily returns are neither. Null when the window is too short (n <= 3)
+    to have an interval at all.
+    """
+
     date: date
     correlation: float | None
     observations: int
+    ci_low: float | None
+    ci_high: float | None
 
 
 class RollingCorrelation(BaseModel):

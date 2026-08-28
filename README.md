@@ -7,6 +7,9 @@ dashboard, and an agent you can ask questions in plain English.
 The agent cannot write to the database. Postgres role grants enforce that, not
 an instruction in the prompt.
 
+**[FINDINGS.md](FINDINGS.md)** is the analysis: five things this data says, each
+with a confidence interval and each with the reason it might be wrong.
+
 The schema is still `market` and the database roles are still `sqlproj_*`.
 Renaming them means a migration plus new credentials in four places, so the old
 project name survives below the application layer.
@@ -130,7 +133,7 @@ uv pip install -e ./ingest -e ./api --no-deps
 .venv/bin/python -m ingest refresh-views
 .venv/bin/python -m ingest coverage          # 752 bars/equity, 1096/crypto
 
-.venv/bin/python -m pytest                   # 277 tests
+.venv/bin/python -m pytest                   # 283 tests
 
 .venv/bin/uvicorn app.main:app --reload      # :8000
 cd web && npm install && npm run dev         # :5173
@@ -165,6 +168,11 @@ claim rewrites it rather than leaving a stale one in place.
 ```bash
 .venv/bin/python scripts/insights.py --markdown
 ```
+
+These are descriptive and regenerate themselves. The written analysis, with
+confidence intervals and stated limits, is in [FINDINGS.md](FINDINGS.md), which
+also reconciles the pairwise correlation reported below against the index-level
+figure an allocator would actually experience.
 
 <!-- INSIGHTS:START -->
 
@@ -420,8 +428,8 @@ scripts/  insights.py, which regenerates the README's numbers from the database.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest          # 277
-cd web && npm test                  # 81
+.venv/bin/python -m pytest          # 283
+cd web && npm test                  # 96
 ```
 
 | File | | Covers |
@@ -430,7 +438,7 @@ cd web && npm test                  # 81
 | `test_api.py` | 50 | endpoint contracts, cache headers and error paths |
 | `test_db_privileges.py` | 33 | the security boundary, adversarially |
 | `test_gateway_config.py` | 28 | base-URL and auth-style handling for non-Anthropic gateways |
-| `test_queries.py` | 31 | each analytics query against invariants: correlation symmetry, unit diagonal, moving-average ramp-up |
+| `test_queries.py` | 37 | each analytics query against invariants: correlation symmetry, unit diagonal, moving-average ramp-up |
 | `test_query_stream.py` | 19 | conversation-history bounds, SSE progress events, the streaming route |
 | `test_agent.py` | 18 | the agent loop against a fake Anthropic client |
 | `test_query_endpoint.py` | 16 | `/api/query` including the unconfigured 503 path |

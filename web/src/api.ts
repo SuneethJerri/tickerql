@@ -97,10 +97,15 @@ export interface SectorCorrelationMatrix {
   cells: SectorCorrelationCell[];
 }
 
+/** One trailing window. `ci_low`/`ci_high` are the 95% Fisher z interval for
+ *  `correlation`, asymmetric around it by construction, and a floor on the real
+ *  uncertainty rather than a measurement of it - see the SQL for why. */
 export interface RollingCorrelationPoint {
   date: string;
   correlation: number | null;
   observations: number;
+  ci_low: number | null;
+  ci_high: number | null;
 }
 
 export interface RollingCorrelation {

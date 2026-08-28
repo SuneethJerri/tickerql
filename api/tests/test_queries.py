@@ -375,6 +375,95 @@ def test_rolling_correlation_matches_independent_python(conn) -> None:
         )
 
 
+def test_rolling_correlation_interval_brackets_the_estimate(conn) -> None:
+    rows = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="BTC",
+             rolling_days=60, span_days=730)
+    assert rows
+    for r in rows:
+        assert r["ci_low"] is not None and r["ci_high"] is not None
+        assert -1.0 <= r["ci_low"] <= r["correlation"] <= r["ci_high"] <= 1.0, (
+            f"interval does not contain its own estimate on {r['date']}"
+        )
+
+
+def test_rolling_correlation_interval_matches_independent_python(conn) -> None:
+    """Recompute the Fisher z interval in Python and compare.
+
+    This is the test that catches wrong maths rather than a wrong shape: a
+    band computed with the wrong z-score, or around r instead of in z space,
+    still returns tidy numbers that bracket the estimate.
+    """
+    rolling = 60
+    rows = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="BTC",
+             rolling_days=rolling, span_days=365)
+
+    for row in (rows[0], rows[len(rows) // 2], rows[-1]):
+        r = row["correlation"]
+        half = 1.959964 / math.sqrt(rolling - 3)
+        low = math.tanh(math.atanh(r) - half)
+        high = math.tanh(math.atanh(r) + half)
+        assert row["ci_low"] == pytest.approx(low, abs=1e-9)
+        assert row["ci_high"] == pytest.approx(high, abs=1e-9)
+
+
+def test_rolling_correlation_interval_is_asymmetric_near_the_bounds(conn) -> None:
+    """Fisher z is a transform, not a +/- around r.
+
+    Near the bounds there is more room below a high correlation than above it,
+    and an interval computed as r +/- k would run past 1.0 instead.
+    """
+    rows = q(conn, "rolling_correlation", ticker_a="BTC", ticker_b="ETH",
+             rolling_days=30, span_days=730)
+    strong = [r for r in rows if r["correlation"] > 0.85]
+    assert strong, "expected BTC/ETH to spend time above 0.85"
+    for r in strong:
+        below = r["correlation"] - r["ci_low"]
+        above = r["ci_high"] - r["correlation"]
+        assert below > above, (
+            f"interval around {r['correlation']:.3f} is not skewed downward "
+            f"(-{below:.4f}, +{above:.4f})"
+        )
+
+
+def test_rolling_correlation_interval_narrows_as_the_window_grows(conn) -> None:
+    """More observations, less uncertainty - the 1/sqrt(n-3) in the standard
+    error is the only thing that makes the band worth drawing."""
+    widths = {}
+    for window in (20, 60, 120):
+        rows = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="MSFT",
+                 rolling_days=window, span_days=365)
+        # Compare at a fixed correlation so only n differs between the windows.
+        widths[window] = fmean(
+            math.tanh(math.atanh(0.3) + 1.959964 / math.sqrt(r["observations"] - 3))
+            - math.tanh(math.atanh(0.3) - 1.959964 / math.sqrt(r["observations"] - 3))
+            for r in rows
+        )
+        assert all(r["observations"] == window for r in rows)
+    assert widths[20] > widths[60] > widths[120]
+
+
+def test_rolling_correlation_window_too_short_for_an_interval_returns_null(conn) -> None:
+    """n = 3 puts a zero under the square root. Without the guard this is not a
+    NaN or a wide band, it is `division by zero` and the whole query fails."""
+    rows = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="MSFT",
+             rolling_days=3, span_days=90)
+    assert rows, "a 3-day window still has a correlation, just no interval"
+    assert all(r["correlation"] is not None for r in rows)
+    assert all(r["ci_low"] is None and r["ci_high"] is None for r in rows)
+
+
+def test_rolling_correlation_of_an_asset_with_itself_has_a_degenerate_interval(conn) -> None:
+    """atanh(1) is infinite. tanh brings it back, so the interval collapses to a
+    point at 1.0 rather than erroring or leaking a non-finite number into JSON."""
+    rows = q(conn, "rolling_correlation", ticker_a="AAPL", ticker_b="AAPL",
+             rolling_days=30, span_days=365)
+    assert rows
+    for r in rows:
+        assert r["ci_low"] == pytest.approx(1.0)
+        assert r["ci_high"] == pytest.approx(1.0)
+        assert math.isfinite(r["ci_low"]) and math.isfinite(r["ci_high"])
+
+
 def test_rolling_correlation_uses_common_trading_days(conn) -> None:
     """The window counts shared observations, not calendar days.
 
