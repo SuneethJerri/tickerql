@@ -3,9 +3,10 @@
 Five things the data says, with the uncertainty attached to each.
 
 **Data.** 135 assets across 19 sectors (11 GICS, 7 Indian NSE, plus crypto),
-106,107 daily bars from 2023-08-22 to 2026-08-28. Returns come from
-split-adjusted closes. Volatility is annualised at 252 periods per year for
-equities and 365 for crypto.
+106,212 daily bars from 2023-08-22 to 2026-08-29. Crypto runs to 2026-08-29 and
+equities to 2026-08-28, because crypto trades weekends and equities do not.
+Returns come from split-adjusted closes. Volatility is annualised at 252 periods
+per year for equities and 365 for crypto.
 
 **Method.** Every correlation carries a 95% confidence interval from the Fisher
 z-transform: `z = atanh(r)` is approximately normal with standard error
@@ -28,22 +29,25 @@ Across all 135 assets over a trailing year, more volatile assets returned
 
 | Universe | r(volatility, return) | 95% interval | n |
 |---|---|---|---|
-| All assets | **-0.292** | [-0.439, -0.129] | 135 |
-| Equities only | **+0.257** | [+0.084, +0.415] | 123 |
+| All assets | **-0.288** | [-0.436, -0.125] | 135 |
+| Equities only | **+0.266** | [+0.093, +0.423] | 123 |
 
 Both intervals exclude zero and they have opposite signs. The whole reversal
 comes from 12 crypto assets, which over this window averaged 65.3% annualised
-volatility and **-52.1%** annualised return. They sit alone in the
+volatility and **-51.3%** annualised return. They sit alone in the
 high-volatility, negative-return corner and drag the fitted relationship
 through it.
 
 The same measurement is also unstable across windows, on the full universe:
 
-| Window | r(volatility, return) | 95% interval |
-|---|---|---|
-| 30 days | +0.541 | [+0.410, +0.651] |
-| 90 days | -0.005 | [-0.173, +0.165] |
-| 365 days | -0.292 | [-0.439, -0.129] |
+| Window | r(volatility, return) | 95% interval | |
+|---|---|---|---|
+| 30 days | +0.565 | [+0.438, +0.670] | |
+| 90 days | -0.039 | [-0.207, +0.131] | contains zero |
+| 365 days | -0.288 | [-0.436, -0.125] | |
+
+Strongly positive at 30 days, unreadable at 90, clearly negative at 365, on the
+same universe.
 
 **What follows.** Any statement of the form "riskier assets earned more here" is
 a statement about a window and a universe, not about the market. The dashboard's
@@ -59,17 +63,18 @@ distinguishable from zero:
 
 | Span | Median shared observations | Smallest readable \|r\| | Pairs distinguishable from zero |
 |---|---|---|---|
-| ~60 calendar days | 42 | 0.304 | **19.2%** (1,739) |
-| 1 year | 250 | 0.124 | 37.4% (3,381) |
-| Full span | 751 | 0.072 | **57.8%** (5,226) |
+| ~60 calendar days | 42 | 0.304 | **18.9%** (1,713) |
+| 1 year | 250 | 0.124 | 37.2% (3,363) |
+| Full span | 757 | 0.071 | **57.8%** (5,226) |
 
-Mean |r| over the short window is 0.182, comfortably below the 0.304 needed to
+Mean |r| over the short window is 0.184, comfortably below the 0.304 needed to
 read it. Four fifths of the correlations visible on a two-month view are noise.
 
 Apple and Microsoft make it concrete. Over the full three years their
-correlation is **0.348** [0.284, 0.410], clearly positive. Over the most recent
-60 trading days it is **0.147** [-0.111, 0.386], which cannot be told apart from
-zero. Nothing about the two companies changed; the sample got smaller.
+correlation is **+0.353** [+0.289, +0.414] on 757 shared trading days, clearly
+positive. Over the most recent 60 shared trading days it is **+0.138**
+[-0.120, +0.379], which cannot be told apart from zero. Nothing about the two
+companies changed; the sample got smaller.
 
 **What follows.** A correlation heatmap on a short window is mostly a picture of
 its own sampling error. This is why the rolling-correlation chart in the app
@@ -78,23 +83,24 @@ rather than 30.
 
 ## 3. Whether crypto diversifies depends on whether you measure assets or books
 
-The same data answers this question two ways, and they differ by a factor of
-four.
+The same data answers this question two ways, and they differ by nearly a factor
+of five.
 
 | Estimator | Trailing 365d | Full span |
 |---|---|---|
-| Mean of 1,116 pairwise crypto x US-equity correlations | +0.076 | +0.104 |
-| Correlation of the two equal-weighted **index** series | **+0.358** | **+0.331** |
+| Mean of 1,116 pairwise crypto x US-equity correlations | +0.075 | +0.104 |
+| Correlation of the two equal-weighted **index** series | **+0.356** | **+0.333** |
 | Mean of 4,278 pairwise correlations *within* US equities, for scale | +0.100 | +0.186 |
 
-Read pairwise, crypto looks like an excellent diversifier: at 0.076 a crypto
+Read pairwise, crypto looks like an excellent diversifier: at 0.075 a crypto
 asset is *less* correlated to a US equity than two US equities are to each other
 (0.100). That is the reading in the README's generated insights section, and it
 is arithmetically correct.
 
 Read as books, it is not. Aggregate the twelve crypto assets into one
-equal-weighted series and the 123 US equities into another, and the two move
-together at 0.358 [+0.245, +0.462].
+equal-weighted series and the 123 US equities into another, and over the
+trailing year the two move together at 0.356 [+0.243, +0.460] on 250 shared
+trading days.
 
 Both numbers are right. The gap is idiosyncratic risk: a single crypto against a
 single stock is mostly two independent noise processes, and that noise dilutes
@@ -103,29 +109,30 @@ standing, which is the only part that survives in a portfolio.
 
 **What follows.** Diversification is a property of portfolios, so the index
 estimate is the decision-relevant one, and the pairwise view understates the
-correlation an allocator actually experiences by roughly 4x. This is the finding
-I would lead with in a review: not "the number is wrong" but "the number answers
-a different question than the one being asked".
+correlation an allocator actually experiences by roughly five times. This is the
+finding I would lead with in a review: not "the number is wrong" but "the number
+answers a different question than the one being asked".
 
 ## 4. Measured as books, crypto's equity correlation is a regime, not a constant
 
 Taking the index estimator from finding 3 and breaking it out by quarter, the
 US-equity/crypto correlation ranges from **+0.055** [-0.196, +0.299] in Q4 2023
 to **+0.561** [+0.366, +0.709] in Q3 2024. Three of the twelve full quarters
-cannot be distinguished from zero; the other nine can.
+cannot be distinguished from zero (Q4 2023, Q2 2026 and Q3 2026); the other nine
+can.
 
-The full-span figure of 0.342 is an average over a quantity that spent the
+The full-span figure of 0.333 is an average over a quantity that spent the
 period moving between "no measurable relationship" and "moves together about as
 much as two equity sectors do".
 
 Against the same index estimator, the Indian listings are the better
-diversifier over the full span (n = 721 days):
+diversifier over the full span:
 
-| Pair | r | 95% interval | Distinguishable from zero |
-|---|---|---|---|
-| US equities vs crypto | +0.342 | [+0.276, +0.405] | yes |
-| India vs US equities | +0.121 | [+0.049, +0.193] | yes, barely |
-| India vs crypto | **+0.038** | [-0.035, +0.111] | **no** |
+| Pair | r | 95% interval | n | Distinguishable from zero |
+|---|---|---|---|---|
+| US equities vs crypto | +0.333 | [+0.268, +0.395] | 757 | yes |
+| India vs US equities | +0.121 | [+0.049, +0.193] | 722 | yes, barely |
+| India vs crypto | **+0.043** | [-0.029, +0.114] | 748 | **no** |
 
 **What follows.** A diversification assumption calibrated on any one quarter
 here would have been wrong in several of the others, and the error is largest
@@ -137,12 +144,12 @@ correlation cannot be told apart from zero is Indian equities against crypto.
 
 | Window | r(volatility, \|max drawdown\|) | 95% interval | Shared variance |
 |---|---|---|---|
-| 30 days | +0.457 | [+0.312, +0.581] | 21% |
-| 90 days | +0.839 | [+0.781, +0.883] | 70% |
+| 30 days | +0.538 | [+0.405, +0.648] | 29% |
+| 90 days | +0.831 | [+0.770, +0.877] | 69% |
 | 365 days | **+0.862** | [+0.811, +0.900] | **74%** |
 
 Over a year, three quarters of the variation in drawdown is already in the
-volatility figure. Over a month, only a fifth is, because a month is short
+volatility figure. Over a month, under a third is, because a month is short
 enough for the order of the moves to matter: an asset can be volatile without
 ever stringing enough down-days together to make a deep peak-to-trough fall.
 
@@ -179,13 +186,20 @@ zero" that conclusion is safe, because a wider interval only reinforces it.
 Where I say "distinguishable", treat a marginal case such as India vs US
 equities (lower bound +0.049) as weaker than its interval suggests.
 
+**Short windows move.** The 30-day figures in findings 1 and 5 shifted
+materially when this analysis was re-run one trading day later: the risk-return
+correlation moved from +0.541 to +0.565 and the drawdown-volatility correlation
+from +0.457 to +0.538. A single new observation is a thirtieth of that window.
+Treat every 30-day number here as an illustration of instability rather than as
+a measurement worth carrying forward.
+
 **Overlapping windows.** Consecutive points in a rolling series share all but
 one observation, so the series is heavily autocorrelated. A band drawn on it
 describes the uncertainty of each window on its own; it does not license
 treating consecutive points as independent evidence.
 
 **Currency.** Indian returns are local-currency (INR). The India/US correlation
-in finding 3 therefore excludes the exchange-rate effect that an unhedged
+in finding 4 therefore excludes the exchange-rate effect that an unhedged
 dollar investor would actually experience, and is a floor on the correlation
 they would see.
 
@@ -200,7 +214,7 @@ docker compose up -d db
 .venv/bin/python -m ingest migrate
 .venv/bin/python -m ingest backfill --years 3
 .venv/bin/python -m ingest refresh-views
-.venv/bin/python -m pytest          # 283 tests, including the interval maths
+.venv/bin/python -m pytest          # 291 tests, including the interval maths
 ```
 
 Findings 1, 2 and 5 come from `market.asset_metrics` and the correlation
@@ -208,7 +222,7 @@ queries in [`db/queries/`](db/queries/). Findings 3 and 4 build equal-weighted
 index returns per group and correlate those series, so that `n` is the number of
 trading days.
 
-Two estimator notes, both of which changed an answer here:
+Three estimator notes, all of which changed an answer here:
 
 - Pooling every (crypto, equity) pair into a single `corr()` treats 91,908
   pair-days as independent observations and returns an interval about ten times
@@ -216,6 +230,10 @@ Two estimator notes, both of which changed an answer here:
 - Averaging pairwise correlations and correlating aggregated indices are
   different estimators that answer different questions. Finding 3 is entirely
   about the gap between them.
+- "The last 60 trading days" for a pair of equities means the last 60 days
+  *both* traded, not the last 60 rows of a calendar that also contains crypto
+  weekends. Taking the latter silently computes a 42-observation window and
+  labels it 60.
 
 The interval maths is in
 [`db/queries/rolling_correlation.sql`](db/queries/rolling_correlation.sql) and
