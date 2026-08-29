@@ -18,13 +18,18 @@ from app.db import api_connection
 from app.models import (
     AssetOut,
     AssetRiskMetricOut,
+    BetaFit,
+    BetaOut,
+    BetaPoint,
     CorrelationCell,
     CorrelationMatrix,
+    DistributionBucket,
     MovingAveragePoint,
     MovingAverageSeries,
     PeriodOut,
     PriceBar,
     PriceSeries,
+    ReturnDistribution,
     RollingCorrelation,
     RollingCorrelationPoint,
     SectorCorrelationCell,
@@ -32,6 +37,7 @@ from app.models import (
     SectorIndexPoint,
     SectorPerformanceOut,
     SparklineSeries,
+    TailRisk,
 )
 
 log = logging.getLogger(__name__)
@@ -322,6 +328,81 @@ def rolling_correlation(
         span_correlation=span_correlation,
         points=[RollingCorrelationPoint(**r) for r in rows],
     )
+
+
+# ---------------------------------------------------------------------------
+# Distribution and tail risk
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics/distribution/{ticker}", response_model=ReturnDistribution)
+def return_distribution(ticker: Ticker, window: WindowDays = 365) -> ReturnDistribution:
+    """The shape of one asset's daily returns, and what its tails cost.
+
+    Two queries because they answer two questions - the histogram is the
+    shape, the tail figures are the price of it - but one endpoint, because
+    nothing sensible can be drawn from either alone. The bars need the tail
+    counts to be worth looking at, and the tail counts need the bars to be
+    believed.
+    """
+    with api_connection() as conn:
+        resolved = _require_ticker(conn, ticker)
+        params = {"ticker": resolved, "window_days": window}
+        buckets = sql.fetch_all(conn, "return_distribution", params)
+        tail_rows = sql.fetch_all(conn, "tail_risk", params)
+
+    if not buckets or not tail_rows:
+        raise HTTPException(404, f"No return history for {resolved} in the last {window} days")
+
+    head = buckets[0]
+    return ReturnDistribution(
+        ticker=resolved,
+        window_days=window,
+        observations=head["observations"],
+        mean_daily_return=head["mean_daily_return"],
+        daily_volatility=head["daily_volatility"],
+        buckets=[DistributionBucket(**r) for r in buckets],
+        tail=TailRisk(**tail_rows[0]),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Market sensitivity
+# ---------------------------------------------------------------------------
+
+@router.get("/analytics/beta", response_model=list[BetaOut])
+def beta(window: WindowDays = 365) -> list[BetaOut]:
+    """Every asset's fit against the equal-weighted index of its own market.
+
+    Three markets, because this universe holds two currencies and an asset
+    class that trades weekends. Each fit is leave-one-out, so no asset is part
+    of the benchmark it is measured against.
+    """
+    with api_connection() as conn:
+        rows = sql.fetch_all(conn, "asset_beta", {"window_days": window})
+    return [BetaOut(**r) for r in rows]
+
+
+@router.get("/analytics/beta/{ticker}", response_model=BetaFit)
+def beta_fit(ticker: Ticker, window: WindowDays = 365) -> BetaFit:
+    """One asset's regression, with the daily points it was fitted to.
+
+    The fit comes from the same query that feeds the table, so the line drawn
+    through this cloud is the line the table reports rather than a second,
+    subtly different one.
+    """
+    with api_connection() as conn:
+        resolved = _require_ticker(conn, ticker)
+        fits = sql.fetch_all(conn, "asset_beta", {"window_days": window})
+        points = sql.fetch_all(
+            conn, "asset_beta_pairs", {"ticker": resolved, "window_days": window}
+        )
+
+    row = next((r for r in fits if r["ticker"] == resolved), None)
+    if row is None:
+        raise HTTPException(
+            404, f"No market fit for {resolved} in the last {window} days"
+        )
+    return BetaFit(fit=BetaOut(**row), points=[BetaPoint(**p) for p in points])
 
 
 # ---------------------------------------------------------------------------

@@ -6,11 +6,13 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
-  assetReading, correlationReading, pearson,
-  riskReading, sectorDetailReading, sectorReading,
+  assetBetaReading, assetReading, betaReading, correlationReading,
+  distributionReading, pearson, riskReading, sectorDetailReading, sectorReading,
 } from "./readings.ts";
 import { GLOSSARY } from "./glossary.ts";
-import type { RiskMetric, SectorCorrelationCell, SectorPerformance } from "./api.ts";
+import type {
+  Beta, RiskMetric, SectorCorrelationCell, SectorPerformance, TailRisk,
+} from "./api.ts";
 
 // --- pearson ---------------------------------------------------------------
 
@@ -195,4 +197,162 @@ test("every glossary entry is complete enough to render", () => {
     assert.ok(!/\bstandard deviation\b/.test(d.short),
       `${key}'s short definition should not need the jargon it is explaining`);
   }
+});
+
+// --- distribution and beta readings ----------------------------------------
+
+const tail = (over: Partial<TailRisk> = {}): TailRisk => ({
+  observations: 250, mean_daily_return: 0.001, daily_volatility: 0.016,
+  skewness: -0.4, excess_kurtosis: 3.1,
+  beyond_2sd: 15, beyond_3sd: 3,
+  expected_beyond_2sd: 11.4, expected_beyond_3sd: 0.67,
+  best_return: 0.048, best_date: "2026-07-02",
+  worst_return: -0.073, worst_date: "2026-07-31",
+  total_return: 0.382, total_return_without_best_5: 0.123,
+  total_return_without_worst_5: 0.798,
+  ...over,
+});
+
+test("the distribution reading counts the tail against what a normal curve predicts", () => {
+  const text = distributionReading(tail(), "AAPL")!;
+  assert.match(text, /3 of 250 days/);
+  assert.match(text, /predicts 0\.7/);
+  assert.match(text, /about 4 times more often/);
+});
+
+test("it states the concentration in returns, not in moments", () => {
+  const text = distributionReading(tail(), "AAPL")!;
+  assert.match(text, /five best days and the window's \+38\.2% becomes \+12\.3%/);
+});
+
+test("it does not claim a fat tail an asset does not have", () => {
+  // A normal-ish asset: as many 3-sigma days as predicted. The reading must
+  // report that rather than reaching for the multiplier sentence.
+  const normalish = distributionReading(
+    tail({ beyond_3sd: 1, expected_beyond_3sd: 0.9, skewness: 0.1 }),
+    "FLAT",
+  )!;
+  assert.doesNotMatch(normalish, /times more often/);
+  assert.match(normalish, /close to what a normal distribution would give/);
+});
+
+test("no distribution reading from a window too short to have a shape", () => {
+  assert.equal(distributionReading(tail({ observations: 12 }), "X"), null);
+  assert.equal(distributionReading(tail({ daily_volatility: null }), "X"), null);
+});
+
+const fit = (over: Partial<Beta> = {}): Beta => ({
+  ticker: "AAPL", name: "Apple Inc.", sector: "Information Technology",
+  asset_type: "stock", market: "US equities", observations: 250,
+  beta: 0.88, beta_low: 0.56, beta_high: 1.19,
+  market_correlation: 0.33, r_squared: 0.107, idiosyncratic_share: 0.893,
+  alpha_annualized: 0.21,
+  ...over,
+});
+
+test("the asset beta reading warns when the fit is too weak to lean on", () => {
+  const weak = assetBetaReading(fit())!;
+  // Market names verbatim: "us equities" was the first version and read as a typo.
+  assert.match(weak, /A 1% day for US equities moves AAPL 0\.88% on average/);
+  assert.match(weak, /between 0\.56 and 1\.19/);
+  assert.match(weak, /explains only 11% of its day-to-day movement/);
+  assert.doesNotMatch(weak, /us equities/, "the market name must not be lowercased");
+  assert.match(weak, /the beta is a weak summary/);
+
+  const strong = assetBetaReading(fit({ r_squared: 0.77, beta: 1.05 }))!;
+  assert.doesNotMatch(strong, /weak summary/);
+  assert.match(strong, /explains 77%/);
+});
+
+test("it claims amplification only when the interval clears 1", () => {
+  const straddles = assetBetaReading(fit({ beta: 1.2, beta_low: 0.9, beta_high: 1.5 }))!;
+  assert.doesNotMatch(straddles, /amplifies|damps/);
+
+  const clears = assetBetaReading(fit({ beta: 1.6, beta_low: 1.3, beta_high: 1.9 }))!;
+  assert.match(clears, /reliably amplifies/);
+
+  const under = assetBetaReading(fit({ beta: 0.4, beta_low: 0.2, beta_high: 0.6 }))!;
+  assert.match(under, /reliably damps/);
+});
+
+test("the cross-sectional beta reading contrasts the markets", () => {
+  // Five of the twenty equities have an interval clearing 1 on one side; the
+  // rest straddle it, so the counted sentence has something to count and
+  // something to leave out.
+  const equities = Array.from({ length: 20 }, (_, i) =>
+    fit({
+      ticker: `E${i}`, market: "US equities", r_squared: 0.05 + i * 0.005,
+      ...(i < 3
+        ? { beta: 1.6, beta_low: 1.3, beta_high: 1.9 }
+        : i < 5
+          ? { beta: 0.4, beta_low: 0.2, beta_high: 0.6 }
+          : { beta: 0.9, beta_low: 0.5, beta_high: 1.3 }),
+    }));
+  const crypto = Array.from({ length: 10 }, (_, i) =>
+    fit({ ticker: `C${i}`, market: "Crypto", asset_type: "crypto",
+          r_squared: 0.7 + i * 0.01, beta: 1.05, beta_low: 0.95, beta_high: 1.15 }));
+
+  const text = betaReading([...equities, ...crypto])!;
+  // Market names appear exactly as the API gives them: no lowercased "us",
+  // no singularised "a crypto's".
+  assert.match(text, /The typical Crypto asset has 7[0-9]% of its daily movement/);
+  assert.match(text, /for US equities it is \d+%/);
+  assert.match(text, /carries much further in Crypto than in US equities/);
+  assert.doesNotMatch(text, /equities (mostly )?does not/, "verb must agree with the market name");
+  assert.match(text, /Of 30 assets, 3 move more than their market and 2 move less/);
+  assert.match(text, /remaining 25 cannot be told apart/);
+});
+
+test("it stays quiet about a difference in kind when the gap is one of degree", () => {
+  const a = Array.from({ length: 10 }, (_, i) =>
+    fit({ ticker: `A${i}`, market: "US equities", r_squared: 0.30 + i * 0.001 }));
+  const b = Array.from({ length: 10 }, (_, i) =>
+    fit({ ticker: `B${i}`, market: "Indian equities", r_squared: 0.25 + i * 0.001 }));
+  const text = betaReading([...a, ...b])!;
+  assert.match(text, /The typical US equities asset has 30%/);
+  assert.doesNotMatch(text, /carries much further/);
+});
+
+test("no beta reading from one market alone", () => {
+  const only = Array.from({ length: 20 }, (_, i) => fit({ ticker: `E${i}` }));
+  assert.equal(betaReading(only), null, "a contrast needs two markets to contrast");
+  assert.equal(betaReading([fit()]), null);
+});
+
+test("the concentration sentence has its own floor, above the reading's", () => {
+  // 45 days is enough to describe a shape and not enough to say "take away
+  // its five best days" about - five days is a ninth of the window. The floor
+  // has to be tested between the two, or the outer floor is doing all the
+  // rejecting and this one is never exercised.
+  const short = distributionReading(
+    tail({ observations: 45, beyond_3sd: 2, expected_beyond_3sd: 0.12 }),
+    "SHORT",
+  )!;
+  assert.match(short, /2 of 45 days/, "the tail sentence should still be there");
+  assert.doesNotMatch(short, /five best days/);
+
+  assert.match(distributionReading(tail({ observations: 60 }), "LONG")!, /five best days/);
+});
+
+test("the skew sentence names the direction the big moves lean", () => {
+  assert.match(distributionReading(tail({ skewness: -0.8 }), "A")!, /lean downward/);
+  assert.match(distributionReading(tail({ skewness: 0.8 }), "B")!, /lean upward/);
+
+  // Near zero there is no lean worth naming, and claiming one either way
+  // would be reading noise.
+  const flat = distributionReading(tail({ skewness: 0.1 }), "C")!;
+  assert.doesNotMatch(flat, /lean/);
+});
+
+test("the beta reading reports a typical asset, not an average dragged by one", () => {
+  // Nine assets near 0.05 and one at 0.90. The mean is 0.135, the median
+  // 0.05. A reading that says "typical" must not quote the mean.
+  const lopsided = Array.from({ length: 10 }, (_, i) =>
+    fit({ ticker: `L${i}`, market: "US equities", r_squared: i === 9 ? 0.90 : 0.05 }));
+  const other = Array.from({ length: 10 }, (_, i) =>
+    fit({ ticker: `O${i}`, market: "Crypto", asset_type: "crypto", r_squared: 0.77 }));
+
+  const text = betaReading([...lopsided, ...other])!;
+  assert.match(text, /for US equities it is 5%/);
+  assert.doesNotMatch(text, /for US equities it is 1[0-9]%/, "that would be the mean");
 });

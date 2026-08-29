@@ -3,11 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { api, fmtCompact, fmtPct, type PriceBar, type RiskMetric } from "../api";
 import { PriceMaChart } from "../charts/PriceMaChart";
 import { DrawdownChart, type DrawdownPoint } from "../charts/DrawdownChart";
+import { DistributionChart } from "../charts/DistributionChart";
+import { BetaScatter } from "../charts/BetaScatter";
 import type { ThemeName } from "../charts/palette";
 import { StatTile } from "../components/StatTile";
 import { TableView, type Column } from "../components/TableView";
 import { Card, ErrorNotice, Loading, Reading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
-import { assetReading } from "../readings";
+import { assetBetaReading, assetReading, distributionReading } from "../readings";
 import { PinButton } from "../components/PinButton";
 import { AskAbout } from "../components/AskAbout";
 import { usePins } from "../pins";
@@ -41,6 +43,14 @@ export function AssetPage({ theme }: { theme: ThemeName }) {
   const risk = useQuery({
     queryKey: ["risk-return", windowDays],
     queryFn: () => api.riskReturn(windowDays),
+  });
+  const distribution = useQuery({
+    queryKey: ["distribution", ticker, windowDays],
+    queryFn: () => api.distribution(ticker, windowDays),
+  });
+  const betaFit = useQuery({
+    queryKey: ["beta-fit", ticker, windowDays],
+    queryFn: () => api.betaFit(ticker, windowDays),
   });
 
   const asset = (assets.data ?? []).find((a) => a.ticker === ticker);
@@ -157,6 +167,107 @@ export function AssetPage({ theme }: { theme: ThemeName }) {
               )}
             </Card>
           </div>
+
+          <Card
+            title={`How ${ticker}'s daily returns are distributed`}
+            subtitle="Every trading day in the window sorted into a bar by how big its move was, against the bell curve a statistician would assume. The gap between the two is the point: real returns are taller in the middle and fatter at the edges, which is why a single volatility number understates how often a violent day arrives."
+          >
+            {distribution.isPending ? <Loading height={300} />
+              : distribution.error ? <ErrorNotice error={distribution.error} /> : (
+              <>
+                <div className="readout">
+                  <StatTile
+                    term="excess_kurtosis"
+                    label="Days beyond 3 sd"
+                    value={`${distribution.data!.tail.beyond_3sd}`}
+                    delta={`normal curve predicts ${distribution.data!.tail.expected_beyond_3sd.toFixed(1)}`}
+                    explain={`For ${ticker} over the last ${windowDays} days, list every day whose return was more than three standard deviations from its mean daily return, with the date and the size of the move.`}
+                  />
+                  <StatTile
+                    term="skewness"
+                    label="Skewness"
+                    value={distribution.data!.tail.skewness?.toFixed(2) ?? "\u2014"}
+                    delta={
+                      (distribution.data!.tail.skewness ?? 0) < 0
+                        ? "large moves lean down"
+                        : "large moves lean up"
+                    }
+                  />
+                  <StatTile
+                    term="total_return"
+                    label="Without the best 5 days"
+                    value={fmtPct(distribution.data!.tail.total_return_without_best_5)}
+                    delta={`${fmtPct(distribution.data!.tail.total_return)} with them`}
+                    deltaDirection={
+                      (distribution.data!.tail.total_return_without_best_5 ?? 0) >= 0 ? "up" : "down"
+                    }
+                    explain={`For ${ticker} over the last ${windowDays} days, show the five largest single-day returns with their dates, and the total return of the window with and without them.`}
+                  />
+                  <StatTile
+                    label="Biggest single day"
+                    value={fmtPct(distribution.data!.tail.worst_return)}
+                    delta={distribution.data!.tail.worst_date ?? undefined}
+                    deltaDirection="down"
+                  />
+                </div>
+                <Reading text={distributionReading(distribution.data!.tail, ticker)} />
+                <DistributionChart
+                  buckets={distribution.data!.buckets}
+                  observations={distribution.data!.observations}
+                  theme={theme}
+                />
+              </>
+            )}
+          </Card>
+
+          <Card
+            title={`How much of ${ticker} is its market`}
+            subtitle="Each dot is one trading day: the market's move across, this asset's move up. A tight band means the market carries the asset; a shapeless cloud means it mostly does its own thing. The slope of the fitted line is the beta."
+          >
+            {betaFit.isPending ? <Loading height={320} />
+              : betaFit.error ? <ErrorNotice error={betaFit.error} /> : (
+              <>
+                <div className="readout">
+                  <StatTile
+                    term="beta"
+                    label="Beta"
+                    value={betaFit.data!.fit.beta?.toFixed(2) ?? "\u2014"}
+                    delta={
+                      betaFit.data!.fit.beta_low != null && betaFit.data!.fit.beta_high != null
+                        ? `${betaFit.data!.fit.beta_low.toFixed(2)} to ${betaFit.data!.fit.beta_high.toFixed(2)}`
+                        : undefined
+                    }
+                    explain={`Explain ${ticker}'s beta against ${betaFit.data!.fit.market} over the last ${windowDays} days: show the number of shared trading days, and the days where the two moved most differently.`}
+                  />
+                  <StatTile
+                    term="r_squared"
+                    label="Explained by its market"
+                    value={fmtPct(betaFit.data!.fit.r_squared, 0)}
+                    delta={`${fmtPct(betaFit.data!.fit.idiosyncratic_share, 0)} is its own`}
+                  />
+                  <StatTile
+                    term="alpha"
+                    label="Alpha"
+                    value={fmtPct(betaFit.data!.fit.alpha_annualized)}
+                    delta="annualised, market removed"
+                    deltaDirection={(betaFit.data!.fit.alpha_annualized ?? 0) >= 0 ? "up" : "down"}
+                  />
+                  <StatTile
+                    term="market_index"
+                    label="Measured against"
+                    value={betaFit.data!.fit.market}
+                    delta={`${betaFit.data!.fit.observations} shared days`}
+                  />
+                </div>
+                <Reading text={assetBetaReading(betaFit.data!.fit)} />
+                <BetaScatter
+                  fit={betaFit.data!.fit}
+                  points={betaFit.data!.points}
+                  theme={theme}
+                />
+              </>
+            )}
+          </Card>
 
           <Card
             title="Every metric for this asset"

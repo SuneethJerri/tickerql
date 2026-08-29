@@ -228,6 +228,75 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export interface DistributionBucket {
+  bucket: number;
+  /** Null on an outer bucket: unbounded past 4 standard deviations. */
+  z_low: number | null;
+  z_high: number | null;
+  return_low: number | null;
+  return_high: number | null;
+  days: number;
+}
+
+export interface TailRisk {
+  observations: number;
+  mean_daily_return: number | null;
+  daily_volatility: number | null;
+  skewness: number | null;
+  excess_kurtosis: number | null;
+  beyond_2sd: number;
+  beyond_3sd: number;
+  /** What a normal curve of the same width predicts over the same days. */
+  expected_beyond_2sd: number;
+  expected_beyond_3sd: number;
+  best_return: number | null;
+  best_date: string | null;
+  worst_return: number | null;
+  worst_date: string | null;
+  total_return: number | null;
+  total_return_without_best_5: number | null;
+  total_return_without_worst_5: number | null;
+}
+
+export interface ReturnDistribution {
+  ticker: string;
+  window_days: number;
+  observations: number;
+  mean_daily_return: number | null;
+  daily_volatility: number | null;
+  buckets: DistributionBucket[];
+  tail: TailRisk;
+}
+
+export interface Beta {
+  ticker: string;
+  name: string;
+  sector: string;
+  asset_type: "stock" | "crypto";
+  /** Which equal-weighted index this beta is against. A beta without its
+   *  benchmark is not a number anyone can use. */
+  market: string;
+  observations: number;
+  beta: number | null;
+  beta_low: number | null;
+  beta_high: number | null;
+  market_correlation: number | null;
+  r_squared: number | null;
+  idiosyncratic_share: number | null;
+  alpha_annualized: number | null;
+}
+
+export interface BetaPoint {
+  date: string;
+  asset_return: number;
+  market_return: number;
+}
+
+export interface BetaFit {
+  fit: Beta;
+  points: BetaPoint[];
+}
+
 export const api = {
   health: () => request<Health>("/api/health"),
   assets: () => request<Asset[]>("/api/assets"),
@@ -256,6 +325,15 @@ export const api = {
     request<RollingCorrelation>(
       `/api/analytics/rolling-correlation?a=${encodeURIComponent(a)}` +
         `&b=${encodeURIComponent(b)}&window=${window}&span=${span}`,
+    ),
+  distribution: (ticker: string, window: number) =>
+    request<ReturnDistribution>(
+      `/api/analytics/distribution/${encodeURIComponent(ticker)}?window=${window}`,
+    ),
+  beta: (window: number) => request<Beta[]>(`/api/analytics/beta?window=${window}`),
+  betaFit: (ticker: string, window: number) =>
+    request<BetaFit>(
+      `/api/analytics/beta/${encodeURIComponent(ticker)}?window=${window}`,
     ),
   movingAverages: (ticker: string, windows: number[], window: number) =>
     request<MovingAverageSeries>(

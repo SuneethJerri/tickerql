@@ -42,6 +42,7 @@ def test_all_queries_are_discoverable() -> None:
         "assets", "price_history", "sector_performance", "sector_index",
         "asset_risk_metrics", "correlation_matrix", "best_worst_periods",
         "moving_averages", "rolling_correlation", "correlation_sectors",
+        "return_distribution", "tail_risk", "asset_beta", "asset_beta_pairs",
     }
     assert expected <= found, f"missing queries: {expected - found}"
 
@@ -674,3 +675,268 @@ def test_every_query_runs_under_the_readonly_api_role(env) -> None:
     with psycopg.connect(api_url) as c:
         for name, params in cases.items():
             assert sql.fetch_all(c, name, params) is not None, name
+
+
+# ---------------------------------------------------------------------------
+# return_distribution / tail_risk
+# ---------------------------------------------------------------------------
+
+def _daily_returns(conn, ticker: str, window_days: int) -> list[float]:
+    """The exact rows the distribution queries see, for independent recompute."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT dr.simple_return
+            FROM market.daily_returns dr
+            JOIN market.assets a ON a.id = dr.asset_id
+            CROSS JOIN (SELECT max(date) AS as_of FROM market.daily_returns) b
+            WHERE a.ticker = %(ticker)s
+              AND dr.simple_return IS NOT NULL
+              AND dr.date > b.as_of - make_interval(days => %(window_days)s)
+            ORDER BY dr.date
+            """,
+            {"ticker": ticker, "window_days": window_days},
+        )
+        return [r[0] for r in cur.fetchall()]
+
+
+def test_return_distribution_accounts_for_every_day(conn) -> None:
+    """Nothing may fall between the buckets or into two of them.
+
+    width_bucket's out-of-range behaviour is the whole reason the outer bars
+    exist, and getting it wrong loses exactly the days the view is about.
+    """
+    for ticker in ("AAPL", "BTC"):
+        rows = q(conn, "return_distribution", ticker=ticker, window_days=365)
+        assert [r["bucket"] for r in rows] == list(range(34)), "bucket grid has holes"
+        assert sum(r["days"] for r in rows) == rows[0]["observations"], (
+            f"{ticker}: days in buckets do not add up to the observation count"
+        )
+        assert rows[0]["z_low"] is None and rows[-1]["z_high"] is None, (
+            "the outer buckets must be unbounded on their outer side"
+        )
+        inner = [r for r in rows if r["z_low"] is not None and r["z_high"] is not None]
+        assert all(
+            r["z_high"] == pytest.approx(r["z_low"] + 0.25) for r in inner
+        ), "inner buckets must be a quarter of a standard deviation wide"
+
+
+def test_return_distribution_matches_independent_python(conn) -> None:
+    """Recompute the histogram in Python, including the z transform."""
+    rows = q(conn, "return_distribution", ticker="AAPL", window_days=365)
+    returns = _daily_returns(conn, "AAPL", 365)
+    assert len(returns) == rows[0]["observations"]
+
+    mean = fmean(returns)
+    sd = statistics.stdev(returns)
+    assert rows[0]["mean_daily_return"] == pytest.approx(mean, rel=1e-9)
+    assert rows[0]["daily_volatility"] == pytest.approx(sd, rel=1e-9)
+
+    expected = [0] * 34
+    for r in returns:
+        z = (r - mean) / sd
+        if z < -4:
+            expected[0] += 1
+        elif z >= 4:
+            expected[33] += 1
+        else:
+            expected[int((z + 4) / 0.25) + 1] += 1
+
+    assert [r["days"] for r in rows] == expected
+
+
+def test_tail_risk_matches_independent_python(conn) -> None:
+    """The moments, the tail counts and the concentration figure, all recomputed.
+
+    Skewness and excess kurtosis use the Fisher-Pearson adjusted estimators, so
+    the comparison is against those and not the population moments - the two
+    differ by several per cent at n=250, which is enough to matter and not
+    enough to be obvious.
+    """
+    row = q(conn, "tail_risk", ticker="AAPL", window_days=365)[0]
+    returns = _daily_returns(conn, "AAPL", 365)
+    n = len(returns)
+    assert row["observations"] == n
+
+    mean = fmean(returns)
+    sd = statistics.stdev(returns)
+    zs = [(r - mean) / sd for r in returns]
+
+    skew = sum(z ** 3 for z in zs) * n / ((n - 1) * (n - 2))
+    kurt = (
+        sum(z ** 4 for z in zs) * n * (n + 1) / ((n - 1) * (n - 2) * (n - 3))
+        - 3 * (n - 1) ** 2 / ((n - 2) * (n - 3))
+    )
+    assert row["skewness"] == pytest.approx(skew, rel=1e-9)
+    assert row["excess_kurtosis"] == pytest.approx(kurt, rel=1e-9)
+
+    assert row["beyond_2sd"] == sum(1 for z in zs if abs(z) > 2)
+    assert row["beyond_3sd"] == sum(1 for z in zs if abs(z) > 3)
+    assert row["expected_beyond_2sd"] == pytest.approx(n * 0.04550026, rel=1e-6)
+
+    assert row["best_return"] == pytest.approx(max(returns), rel=1e-12)
+    assert row["worst_return"] == pytest.approx(min(returns), rel=1e-12)
+
+    logs = sorted(math.log1p(r) for r in returns)
+    total = sum(logs)
+    assert row["total_return"] == pytest.approx(math.exp(total) - 1, rel=1e-9)
+    assert row["total_return_without_best_5"] == pytest.approx(
+        math.exp(total - sum(logs[-5:])) - 1, rel=1e-9
+    )
+    assert row["total_return_without_worst_5"] == pytest.approx(
+        math.exp(total - sum(logs[:5])) - 1, rel=1e-9
+    )
+
+
+def test_tail_risk_finds_tails_the_normal_curve_does_not_predict(conn) -> None:
+    """The finding the view exists to show, asserted as an invariant.
+
+    Not a tautology: an asset whose returns really were normal would fail this,
+    and if a refresh ever produced one, the view would be claiming a fat tail
+    that is not there.
+
+    The claim is deliberately the 3-sigma COUNT and not excess kurtosis, which
+    was the first version and was wrong. Kurtosis above 1 is not universal here
+    - NVDA sits at 0.53 and XOM at 0.60 - so asserting it failed on three of
+    six tickers. Every asset checked does exceed its 3-sigma prediction, which
+    is the statement the view actually makes to the reader.
+    """
+    sample = ("AAPL", "NVDA", "BTC", "ETH", "XOM", "JPM", "MSFT", "KO", "DOGE", "RELIANCE")
+    ratios = []
+    for ticker in sample:
+        row = q(conn, "tail_risk", ticker=ticker, window_days=365)[0]
+        assert row["excess_kurtosis"] > 0, (
+            f"{ticker} has thinner tails than a normal curve, which would make "
+            "the whole distribution view misleading"
+        )
+        assert row["beyond_3sd"] > row["expected_beyond_3sd"], (
+            f"{ticker}: {row['beyond_3sd']} days beyond 3 sd against "
+            f"{row['expected_beyond_3sd']:.2f} predicted"
+        )
+        ratios.append(row["beyond_3sd"] / row["expected_beyond_3sd"])
+
+    assert statistics.median(ratios) > 2, (
+        "the typical asset should see several times the predicted number of "
+        f"3-sigma days, not marginally more; median ratio {statistics.median(ratios):.1f}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# asset_beta / asset_beta_pairs
+# ---------------------------------------------------------------------------
+
+def test_beta_covers_the_universe_in_three_markets(conn, universe) -> None:
+    rows = q(conn, "asset_beta", window_days=365)
+    assert len(rows) == universe["count"]
+    assert {r["market"] for r in rows} == {"US equities", "Indian equities", "Crypto"}
+
+    by_market = {}
+    for r in rows:
+        by_market.setdefault(r["market"], []).append(r)
+    assert all(r["asset_type"] == "crypto" for r in by_market["Crypto"])
+    assert all(r["sector"].startswith("India:") for r in by_market["Indian equities"])
+    assert not any(
+        r["sector"].startswith("India:") or r["asset_type"] == "crypto"
+        for r in by_market["US equities"]
+    ), "a US equity fit must not include an Indian stock or a coin"
+
+
+def test_beta_matches_independent_python(conn) -> None:
+    """Recompute one asset's slope, interval and R-squared from the pair rows.
+
+    asset_beta_pairs is the same leave-one-out construction as asset_beta, so
+    if the two ever drift apart, the scatter would stop being the cloud the
+    reported line was fitted to.
+    """
+    pairs = q(conn, "asset_beta_pairs", ticker="AAPL", window_days=365)
+    fit = next(r for r in q(conn, "asset_beta", window_days=365) if r["ticker"] == "AAPL")
+    assert fit["observations"] == len(pairs)
+
+    xs = [p["market_return"] for p in pairs]
+    ys = [p["asset_return"] for p in pairs]
+    n = len(xs)
+    mx, my = fmean(xs), fmean(ys)
+    cov = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    vx = sum((x - mx) ** 2 for x in xs)
+    beta = cov / vx
+    r = statistics.correlation(xs, ys)
+
+    assert fit["beta"] == pytest.approx(beta, rel=1e-9)
+    assert fit["market_correlation"] == pytest.approx(r, rel=1e-9)
+    assert fit["r_squared"] == pytest.approx(r * r, rel=1e-9)
+    assert fit["idiosyncratic_share"] == pytest.approx(1 - r * r, rel=1e-9)
+
+    stderr = math.sqrt((1 - r * r) / (n - 2)) * statistics.stdev(ys) / statistics.stdev(xs)
+    assert fit["beta_low"] == pytest.approx(beta - 1.959964 * stderr, rel=1e-9)
+    assert fit["beta_high"] == pytest.approx(beta + 1.959964 * stderr, rel=1e-9)
+    assert fit["beta_low"] < fit["beta"] < fit["beta_high"]
+
+
+def test_beta_index_leaves_the_asset_out_of_its_own_benchmark(conn) -> None:
+    """The correction that matters most where the market is smallest.
+
+    Crypto has twelve members, so an asset included in its own benchmark would
+    carry a twelfth of it and every beta would be dragged toward 1. The test
+    builds the including-self index and asserts the query did NOT use it.
+    """
+    pairs = q(conn, "asset_beta_pairs", ticker="BTC", window_days=365)
+    by_date = {p["date"]: p for p in pairs}
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT dr.date, avg(dr.simple_return) AS mean_r, count(*) AS members
+            FROM market.daily_returns dr
+            JOIN market.assets a ON a.id = dr.asset_id
+            CROSS JOIN (SELECT max(date) AS as_of FROM market.daily_returns) b
+            WHERE a.asset_type = 'crypto'
+              AND dr.simple_return IS NOT NULL
+              AND dr.date > b.as_of - make_interval(days => 365)
+            GROUP BY dr.date
+            """,
+            (),
+        )
+        including_self = {d: (m, c) for d, m, c in cur.fetchall()}
+
+    differed = 0
+    for date, point in by_date.items():
+        mean_with, members = including_self[date]
+        if members < 2:
+            continue
+        # mean of the others = (sum - self) / (members - 1), and the sum is
+        # mean_with * members. If the query had used mean_with, these match.
+        expected = (mean_with * members - point["asset_return"]) / (members - 1)
+        assert point["market_return"] == pytest.approx(expected, rel=1e-9), (
+            f"the benchmark on {date} is not the leave-one-out mean"
+        )
+        if abs(point["market_return"] - mean_with) > 1e-12:
+            differed += 1
+
+    assert differed > len(by_date) * 0.9, (
+        "leaving the asset out must actually change the benchmark, or the test "
+        "is passing on an index that happens to be identical"
+    )
+
+
+def test_beta_interval_widens_as_the_fit_gets_worse(conn) -> None:
+    """A wide interval on a poor fit is the point of reporting both.
+
+    Beta alone cannot distinguish a tight cloud from a diffuse one. The
+    regression standard error can, so the two must move together: normalised
+    by the spread of the estimate, a low R-squared has to buy a wider band.
+    """
+    rows = [
+        r for r in q(conn, "asset_beta", window_days=365)
+        if r["market"] == "US equities" and r["r_squared"] is not None
+    ]
+    ranked = sorted(rows, key=lambda r: r["r_squared"])
+    worst = ranked[:10]
+    best = ranked[-10:]
+
+    def width(r):
+        return r["beta_high"] - r["beta_low"]
+
+    assert fmean(width(r) for r in worst) > fmean(width(r) for r in best), (
+        "the worst-fitting assets must carry wider intervals than the best"
+    )
+    assert all(width(r) > 0 for r in rows)

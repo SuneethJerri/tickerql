@@ -5,7 +5,7 @@ import { Sparkline } from "../charts/Sparkline";
 import { assetTypeColor, type ThemeName } from "../charts/palette";
 import { TableView, type Column } from "../components/TableView";
 import { Card, ErrorNotice, Loading, Reading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
-import { riskReading } from "../readings";
+import { betaReading, riskReading } from "../readings";
 import { PinButton } from "../components/PinButton";
 import { usePins } from "../pins";
 import { setUrlParams, useUrlNumber } from "../urlState";
@@ -23,7 +23,14 @@ export function RiskPage({ theme }: { theme: ThemeName }) {
     queryKey: ["sparklines", windowDays],
     queryFn: () => api.sparklines(windowDays),
   });
+  // One fit per asset, in one request, for the same reason the sparklines are:
+  // the table shows every asset at once.
+  const fits = useQuery({
+    queryKey: ["beta", windowDays],
+    queryFn: () => api.beta(windowDays),
+  });
   const closesFor = new Map((shapes.data ?? []).map((s) => [s.ticker, s.closes]));
+  const fitFor = new Map((fits.data ?? []).map((f) => [f.ticker, f]));
 
   const columns: Column<RiskMetric>[] = [
     {
@@ -86,6 +93,27 @@ export function RiskPage({ theme }: { theme: ThemeName }) {
       term: "max_drawdown",
     },
     {
+      header: "Beta",
+      value: (r) => fitFor.get(r.ticker)?.beta ?? null,
+      cell: (r) => fitFor.get(r.ticker)?.beta?.toFixed(2) ?? "\u2014",
+      term: "beta",
+    },
+    {
+      // The column that says whether the beta beside it means anything. Kept
+      // adjacent on purpose: read apart, a beta invites more confidence than
+      // an R-squared of 0.02 can support.
+      header: "Explained by market",
+      value: (r) => fitFor.get(r.ticker)?.r_squared ?? null,
+      cell: (r) => fmtPct(fitFor.get(r.ticker)?.r_squared, 0),
+      term: "r_squared",
+    },
+    {
+      header: "Market",
+      value: (r) => fitFor.get(r.ticker)?.market ?? "",
+      align: "left",
+      term: "market_index",
+    },
+    {
       header: "Avg volume",
       value: (r) => r.avg_volume,
       cell: (r) => fmtCompact(r.avg_volume),
@@ -106,6 +134,7 @@ export function RiskPage({ theme }: { theme: ThemeName }) {
         {risk.isPending ? <Loading height={340} /> : risk.error ? <ErrorNotice error={risk.error} /> : (
           <>
             <Reading text={riskReading(risk.data!)} />
+            {fits.data && <Reading text={betaReading(fits.data)} />}
             <RiskReturnScatter data={risk.data!} theme={theme} />
             <TableView
               label="asset table"

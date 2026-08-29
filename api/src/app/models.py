@@ -175,6 +175,107 @@ class RollingCorrelation(BaseModel):
     points: list[RollingCorrelationPoint]
 
 
+class DistributionBucket(BaseModel):
+    """One bar of the return histogram, measured in standard deviations.
+
+    Edges are given in both units: `z_low`/`z_high` so the same normal curve
+    overlays every asset, `return_low`/`return_high` so the axis can be
+    labelled in per cent, which is the unit a reader thinks in. A null edge
+    means unbounded - the outer two buckets hold everything past +/- 4 sd.
+    """
+
+    bucket: int
+    z_low: float | None
+    z_high: float | None
+    return_low: float | None
+    return_high: float | None
+    days: int
+
+
+class TailRisk(BaseModel):
+    """What a volatility figure leaves out about the days that produced it.
+
+    `beyond_2sd`/`beyond_3sd` are counts of actual days; `expected_beyond_*`
+    are what a normal distribution of the same width predicts over the same
+    number of days. The gap between them is the fat tail, stated without
+    requiring the reader to know what kurtosis is.
+
+    `total_return_without_best_5` recomputes the window with its five largest
+    days removed, in log space where a total return is a sum. It is the most
+    concrete measure of concentration available: a year of gains often lives
+    in a week of it.
+    """
+
+    observations: int
+    mean_daily_return: float | None
+    daily_volatility: float | None
+    skewness: float | None
+    excess_kurtosis: float | None
+    beyond_2sd: int
+    beyond_3sd: int
+    expected_beyond_2sd: float
+    expected_beyond_3sd: float
+    best_return: float | None
+    best_date: date | None
+    worst_return: float | None
+    worst_date: date | None
+    total_return: float | None
+    total_return_without_best_5: float | None
+    total_return_without_worst_5: float | None
+
+
+class ReturnDistribution(BaseModel):
+    ticker: str
+    window_days: int
+    observations: int
+    mean_daily_return: float | None
+    daily_volatility: float | None
+    buckets: list[DistributionBucket]
+    tail: TailRisk
+
+
+class BetaOut(BaseModel):
+    """One asset's fit against the equal-weighted index of its own market.
+
+    `market` names what the beta is against, and is not decoration: this
+    universe holds three of them, in two currencies, and a beta quoted without
+    its benchmark is not a number anyone can use.
+
+    `beta_low`/`beta_high` are the ordinary 95 per cent regression interval,
+    symmetric because beta is unbounded. `r_squared` is the share of the
+    asset's daily variation the market accounts for, and it is the figure that
+    says whether the beta means anything: the same slope through a tight cloud
+    and a diffuse one are very different claims.
+    """
+
+    ticker: str
+    name: str
+    sector: str
+    asset_type: Literal["stock", "crypto"]
+    market: str
+    observations: int
+    beta: float | None
+    beta_low: float | None
+    beta_high: float | None
+    market_correlation: float | None
+    r_squared: float | None
+    idiosyncratic_share: float | None
+    alpha_annualized: float | None
+
+
+class BetaPoint(BaseModel):
+    date: date
+    asset_return: float
+    market_return: float
+
+
+class BetaFit(BaseModel):
+    """The regression plus the cloud it was fitted to."""
+
+    fit: BetaOut
+    points: list[BetaPoint]
+
+
 class PeriodOut(BaseModel):
     period_start: date
     first_date: date

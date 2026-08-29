@@ -272,6 +272,9 @@ Four conventions that are easy to get wrong:
 | `GET` | `/api/analytics/periods` | best/worst days or months |
 | `GET` | `/api/analytics/moving-averages/{ticker}` | 20/50/200-day, with an `is_partial` flag during ramp-up |
 | `GET` | `/api/analytics/risk-return` | the scatter feed |
+| `GET` | `/api/analytics/distribution/{ticker}` | return histogram in standard-deviation buckets, plus tail counts against a normal curve |
+| `GET` | `/api/analytics/beta` | every asset's fit against the equal-weighted index of its own market, with a 95 per cent interval |
+| `GET` | `/api/analytics/beta/{ticker}` | the same fit plus the daily points it was fitted to |
 | `POST` | `/api/query` | natural language → SQL → answer |
 | `POST` | `/api/query/stream` | the same answer as server-sent events, reported as the agent works |
 
