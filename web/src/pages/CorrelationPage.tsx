@@ -6,10 +6,11 @@ import { RollingCorrelationChart } from "../charts/RollingCorrelationChart";
 import type { ThemeName } from "../charts/palette";
 import { downloadCsv } from "../csv";
 import {
-  Card, ErrorNotice, Loading, WindowPicker,
+  Card, ErrorNotice, Loading, Reading, WindowPicker,
   CORRELATION_WINDOWS, CORRELATION_WINDOW_OPTIONS,
   ROLLING_WINDOWS, ROLLING_WINDOW_OPTIONS,
 } from "../components/ui";
+import { correlationReading } from "../readings";
 import { AskAbout } from "../components/AskAbout";
 import { setUrlParams, useUrlNumber, useUrlOptional } from "../urlState";
 
@@ -229,13 +230,16 @@ export function CorrelationPage({ theme }: { theme: ThemeName }) {
             onSelect={setPair}
           />
         ) : (
-          <CorrelationHeatmap
-            labels={sectorList}
-            cellAt={(a, b) => sectorCells.get(`${a}|${b}`)}
-            theme={theme}
-            unit="pairs"
-            onSelect={(a, b) => setDrill([a, b])}
-          />
+          <>
+            <Reading text={correlationReading(sectors.data?.cells ?? [])} />
+            <CorrelationHeatmap
+              labels={sectorList}
+              cellAt={(a, b) => sectorCells.get(`${a}|${b}`)}
+              theme={theme}
+              unit="pairs"
+              onSelect={(a, b) => setDrill([a, b])}
+            />
+          </>
         )}
       </Card>
 

@@ -5,7 +5,8 @@ import { PriceMaChart } from "../charts/PriceMaChart";
 import type { ThemeName } from "../charts/palette";
 import { StatTile } from "../components/StatTile";
 import { TableView, type Column } from "../components/TableView";
-import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { Card, ErrorNotice, Loading, Reading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { sectorReading } from "../readings";
 import { setUrlParams, useUrlNumber, useUrlString } from "../urlState";
 import { usePins } from "../pins";
 import { PinnedStrip } from "../components/PinnedStrip";
@@ -90,6 +91,7 @@ export function Dashboard({ theme }: { theme: ThemeName }) {
           explain="How many assets are tracked in each sector, and how many of them are stocks versus crypto?"
         />
         <StatTile
+          term="return_per_unit_risk"
           label="Best risk-adjusted"
           value={best?.sector ?? "—"}
           delta={best ? `${best.return_per_unit_risk?.toFixed(2)} return per unit risk` : undefined}
@@ -101,6 +103,7 @@ export function Dashboard({ theme }: { theme: ThemeName }) {
           }
         />
         <StatTile
+          term="return_per_unit_risk"
           label="Weakest"
           value={worst?.sector ?? "—"}
           delta={worst ? `${worst.return_per_unit_risk?.toFixed(2)} return per unit risk` : undefined}
@@ -112,6 +115,7 @@ export function Dashboard({ theme }: { theme: ThemeName }) {
           }
         />
         <StatTile
+          term="volatility"
           label="Most volatile"
           value={widest?.sector ?? "—"}
           delta={widest ? `${fmtPct(widest.annualized_volatility)} annualised` : undefined}
@@ -131,6 +135,7 @@ export function Dashboard({ theme }: { theme: ThemeName }) {
         >
           {index.isPending ? <SectorPanelsSkeleton count={Math.max(sectorCount, 6)} /> : index.error ? <ErrorNotice error={index.error} /> : (
             <>
+              <Reading text={sectorReading(perf.data ?? [])} />
               <SectorIndexChart
                 data={index.data!}
                 theme={theme}
@@ -160,18 +165,20 @@ const SECTOR_COLUMNS: Column<SectorPerformance>[] = [
   // The CSV carries the raw fraction; the table carries the formatted percent.
   // Exporting "57.7%" would force whoever opens it to strip the sign before
   // they could do arithmetic with it.
-  { header: "Return", value: (r) => r.total_return, cell: (r) => fmtPct(r.total_return) },
+  { header: "Return", value: (r) => r.total_return, cell: (r) => fmtPct(r.total_return), term: "total_return" },
   {
     header: "Volatility",
     value: (r) => r.annualized_volatility,
     cell: (r) => fmtPct(r.annualized_volatility),
+    term: "volatility",
   },
   {
     header: "Return / risk",
     value: (r) => r.return_per_unit_risk,
     cell: (r) => r.return_per_unit_risk?.toFixed(2) ?? "—",
+    term: "return_per_unit_risk",
   },
-  { header: "Days", value: (r) => r.observations },
+  { header: "Days", value: (r) => r.observations, term: "observations" },
 ];
 
 function SectorTable({

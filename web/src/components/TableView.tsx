@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { downloadCsv, type CsvCell } from "../csv";
+import { Term } from "./Term";
 
 /** One column, defined once and used twice: `value` is both the exported value
  *  and the default rendering, so the CSV cannot drift from the table. */
@@ -10,6 +11,9 @@ export interface Column<T> {
   cell?: (row: T) => ReactNode;
   /** Left-align a text column; numbers stay right-aligned. */
   align?: "left";
+  /** Glossary key. A header naming a measurement explains what it is on click;
+   *  the export is unaffected, since the header text is unchanged. */
+  term?: string;
 }
 
 /** Collapsible table beneath a chart: the fallback for anyone who cannot use
@@ -58,7 +62,7 @@ export function TableView<T>({
                     scope="col"
                     className={c.align === "left" ? "align-left" : undefined}
                   >
-                    {c.header}
+                    {c.term ? <Term name={c.term}>{c.header}</Term> : c.header}
                   </th>
                 ))}
               </tr>

@@ -7,7 +7,8 @@ import { TooltipCard } from "../charts/ChartTooltip";
 import { emphasisColors, type ThemeName } from "../charts/palette";
 import { baselineScale } from "../charts/scale";
 import { Sparkline } from "../charts/Sparkline";
-import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { Card, ErrorNotice, Loading, Reading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { sectorDetailReading } from "../readings";
 import { PinButton } from "../components/PinButton";
 import { AskAbout } from "../components/AskAbout";
 import { usePins } from "../pins";
@@ -115,6 +116,7 @@ export function SectorPage({ theme }: { theme: ThemeName }) {
           <ErrorNotice error={index.error} />
         ) : (
           <>
+            <Reading text={sectorDetailReading(risk.data ?? [], sector)} />
             {change != null && (
               <p className={`sector-change delta ${change >= 0 ? "up" : "down"}`}>
                 {change >= 0 ? "+" : ""}

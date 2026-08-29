@@ -6,7 +6,8 @@ import { DrawdownChart, type DrawdownPoint } from "../charts/DrawdownChart";
 import type { ThemeName } from "../charts/palette";
 import { StatTile } from "../components/StatTile";
 import { TableView, type Column } from "../components/TableView";
-import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { Card, ErrorNotice, Loading, Reading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { assetReading } from "../readings";
 import { PinButton } from "../components/PinButton";
 import { AskAbout } from "../components/AskAbout";
 import { usePins } from "../pins";
@@ -91,6 +92,7 @@ export function AssetPage({ theme }: { theme: ThemeName }) {
         <>
           <div className="readout">
             <StatTile
+              term="annualised_return"
               label="Annualised return"
               value={fmtPct(metrics?.annualized_return)}
               delta={metrics ? `${fmtPct(metrics.total_return)} over the window` : undefined}
@@ -98,24 +100,29 @@ export function AssetPage({ theme }: { theme: ThemeName }) {
               explain={`Explain ${ticker}'s annualised return over the last ${windowDays} days: show the first and last adjusted close in the window, the total return between them, and the annualised figure that comes from the mean daily log return.`}
             />
             <StatTile
+              term="volatility"
               label="Annualised volatility"
               value={fmtPct(metrics?.annualized_volatility)}
               delta={metrics ? `rank ${metrics.volatility_rank} of ${risk.data?.length ?? "—"}` : undefined}
               explain={`Explain ${ticker}'s annualised volatility over the last ${windowDays} days: show how many daily returns went into it, the standard deviation of those daily log returns, and the annualisation factor applied.`}
             />
             <StatTile
+              term="return_per_unit_risk"
               label="Return per unit risk"
               value={metrics?.return_per_unit_risk?.toFixed(2) ?? "—"}
               delta={peers ? `${ordinal(peers.rank)} of ${peers.total} in ${peers.sector}` : undefined}
               explain={`Rank every asset in ${ticker}'s sector by return per unit of risk over the last ${windowDays} days, showing the annualised return and volatility behind each one, so I can see where ${ticker} sits.`}
             />
             <StatTile
+              term="max_drawdown"
               label="Max drawdown"
               value={fmtPct(metrics?.max_drawdown)}
               delta={metrics ? `${fmtCompact(metrics.avg_volume)} avg volume` : undefined}
               explain={`Explain ${ticker}'s maximum drawdown over the last ${windowDays} days: show the running peak close, the date of the trough, and the fall from that peak to that trough.`}
             />
           </div>
+
+          <Reading text={assetReading(metrics, risk.data?.length ?? 0, peers)} />
 
           <div className="grid">
             <Card

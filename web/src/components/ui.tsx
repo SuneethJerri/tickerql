@@ -95,6 +95,17 @@ export const ROLLING_WINDOW_OPTIONS = [
 ];
 export const ROLLING_WINDOWS = ROLLING_WINDOW_OPTIONS.map((w) => w.value);
 
+/** What the view below is showing, in a sentence or two.
+ *
+ * Sits between the card's subtitle and the chart, and they do different jobs:
+ * the subtitle says what the chart IS and never changes, the reading says what
+ * it SHOWS and is recomputed from the data on screen. Renders nothing when the
+ * reading function declined to produce one. */
+export function Reading({ text }: { text: string | null }) {
+  if (!text) return null;
+  return <p className="reading">{text}</p>;
+}
+
 /** Filters live in one row above the charts. */
 export function WindowPicker({
   value, onChange, options = WINDOWS, label = "Window",

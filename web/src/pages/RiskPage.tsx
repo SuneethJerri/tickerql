@@ -4,7 +4,8 @@ import { RiskReturnScatter } from "../charts/RiskReturnScatter";
 import { Sparkline } from "../charts/Sparkline";
 import { assetTypeColor, type ThemeName } from "../charts/palette";
 import { TableView, type Column } from "../components/TableView";
-import { Card, ErrorNotice, Loading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { Card, ErrorNotice, Loading, Reading, WindowPicker, METRIC_WINDOWS } from "../components/ui";
+import { riskReading } from "../readings";
 import { PinButton } from "../components/PinButton";
 import { usePins } from "../pins";
 import { setUrlParams, useUrlNumber } from "../urlState";
@@ -64,26 +65,31 @@ export function RiskPage({ theme }: { theme: ThemeName }) {
       header: "Return",
       value: (r) => r.annualized_return,
       cell: (r) => fmtPct(r.annualized_return),
+      term: "annualised_return",
     },
     {
       header: "Volatility",
       value: (r) => r.annualized_volatility,
       cell: (r) => fmtPct(r.annualized_volatility),
+      term: "volatility",
     },
     {
       header: "Return / risk",
       value: (r) => r.return_per_unit_risk,
       cell: (r) => r.return_per_unit_risk?.toFixed(2) ?? "\u2014",
+      term: "return_per_unit_risk",
     },
     {
       header: "Max drawdown",
       value: (r) => r.max_drawdown,
       cell: (r) => fmtPct(r.max_drawdown),
+      term: "max_drawdown",
     },
     {
       header: "Avg volume",
       value: (r) => r.avg_volume,
       cell: (r) => fmtCompact(r.avg_volume),
+      term: "avg_volume",
     },
   ];
 
@@ -99,6 +105,7 @@ export function RiskPage({ theme }: { theme: ThemeName }) {
       >
         {risk.isPending ? <Loading height={340} /> : risk.error ? <ErrorNotice error={risk.error} /> : (
           <>
+            <Reading text={riskReading(risk.data!)} />
             <RiskReturnScatter data={risk.data!} theme={theme} />
             <TableView
               label="asset table"
